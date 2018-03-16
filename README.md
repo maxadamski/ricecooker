@@ -10,15 +10,117 @@ Work in progress.
 - [x] Share modules (parts of the configuration) between different systems
 - [x] Run modules in groups, separately or all at once.
 - [x] Use the library interactively from bash
-- [x] Abstract distribution details (like package management) via meta-modules
-- [x] Each module opens a transaction, which can be rolled before committing
-- [x] Link files and folders symbolically or with rsync
+- [x] Abstract the distribution details (like package management) via meta-modules
+- [x] Each module opens a transaction, which can be rolled back before committing
+- [x] Link files and folders symbolically, or with rsync
 - [x] Use a template engine (mustache by default) to keep your configuration DRY
 - [x] Works great with version control.
 
 ## Caveats
 
 Only some commands can be rolled back, although it is possible implement the inverse of arbitrary commands, making them compatible.
+
+## Example
+
+More examples in the `examples` directory.
+
+Check out my [dotfiles](https://github.com/maxadamski/dotfiles) for real world usage.
+
+```bash
+. ricecooker.sh
+
+meta:void() {
+  rice_pkg_function=rice::pkg_flat
+  rice_pkg_requires_sudo=true
+  rice_pkg_install='xbps-install'
+  rice_pkg_install_option_sync='-S'
+  …
+  rice_pkg_remove='xbps-remove'
+}
+
+meta:macos() {
+  rice_pkg_function=rice::pkg_layered
+  rice_pkg_requires_sudo=false
+  rice_pkg_name='brew'
+  rice_pkg_install='install'
+  rice_pkg_remove='remove'
+  rice_pkg_sync='update'
+}
+
+meta:custom() {
+  rice_pkg_function=totally_custom_function
+  rice_service_function=not_systemd
+}
+
+bootstrap:macos() {
+  # install xcode-utils, brew
+  curl …
+  rice::pkg -Su
+  rice::exec sudo gem install mustache
+}
+
+bootstrap:void() {
+  rice::pkg -Su
+  rice::pkg -i git ruby
+  rice::exec sudo gem install mustache
+}
+
+system_config:void() {
+  # Install some packages
+  rice::pkg -i neovim ranger git curl tmux fish-shell calcurse calc sc-im 
+
+  # Bind system configuration
+  rice::bind --template -m644 -uroot system/rc.conf /etc/rc.conf
+
+  # Start some services
+  rice::exec sudo ln -sf /etc/sv/alsa /var/service/
+  rice::exec sudo rm /var/service/agetty-tty{4,5,6}
+
+  …
+}
+
+system_config:void:laptop() {
+  rice_template_hash+='.mustache/void_laptop'
+  # Laptop specific stuff (wifi, bluetooth, X11...)
+}
+
+system_config:void:desktop() {
+  rice_template_hash+='.mustache/void_desktop'
+  # Desktop specific stuff (graphics drivers...)
+}
+
+user_config() {
+  rice::bind -tm750 ranger/rc.conf ~/.config/ranger/rc.conf
+  rice::bind -tm750 vim/init.vim ~/.config/nvim/init.vim
+  rice::bind -dm640 fonts ~/.local/share/fonts
+}
+
+user_config:void() {
+  rice::bind -tm750 X11/xinitrc ~/.xinitrc
+  rice::bind -tm750 X11/Xresources ~/.config/X11/Xresources
+  rice::bind -tm750 bspwm/bspwmrc ~/.config/bspwm/bspwmrc
+  rice::bind -tm750 sxhkd/sxhkdrc ~/.config/sxhkd/sxhkdrc
+
+  rice::exec mkfontscale ~/.local/share/fonts
+  rice::exec mkfontdir ~/.local/share/fonts
+  rice::exec fc-cache -fv
+}
+
+…
+
+rice::meta meta:void meta:macos meta:custom
+
+# Order matters!
+rice::module --explicit bootstrap:void
+rice::module --explicit bootstrap:macos
+rice::module system_config:void
+rice::module system_config:void:desktop
+rice::module system_config:void:laptop
+
+# Shared modules
+rice::module user_packages user_keychain user_config
+rice::module user_config:void user_config:macos
+```
 
 ## Usage
 
