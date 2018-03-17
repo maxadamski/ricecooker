@@ -62,27 +62,45 @@ rice::ask() {
 	done
 }
 
+# Usage: 
+#	rice::split <delimiter> <string>
+# Parameters:
+#	delimiter: required, only one character!
+# Returns:
+#	_rice_split
+# Notes:
+#	bash really is terrible...
+rice::split() {
+	local delimiter="$1"
+	local string="$2"
+	readarray -t -d "$delimiter" _rice_split <<< "$string$delimiter"
+	unset '_rice_split[-1]'
+	rice::debug "$(declare -p _rice_split)"
+}
+
+
 #################################
 # Maintenance
 #
 
 rice::init() {
+	rice::debug "Initializing..."
+
 	# package related
-	unset rice_pkg_install_query
-	unset rice_pkg_remove_query
+	rice_pkg_install_query=()
+	rice_pkg_remove_query=()
 
 	# transaction related
 	rice_transaction_in_progress=false
 	rice_transaction_failed=false
-	unset rice_transaction_steps
+	rice_rollback_failed=false
 
 	# TODO: save steps to a file, so they are not lost
-	declare -a rice_transaction_steps
+	rice_transaction_steps=()
 
 	# module related
-	unset rice_module_explicit
-	unset rice_module_meta
-	unset rice_module_list
+	rice_module_explicit=()
+	rice_module_meta=()
 
 	# rice_module_<option>: [module: option]
 	# module: module function name
@@ -92,7 +110,7 @@ rice::init() {
 
 	# rice_module_list: [module]
 	# module: module function name
-	declare -a rice_module_list
+	rice_module_list=()
 }
 
 
@@ -232,19 +250,16 @@ rice::transaction_did_end() {
 	rice::info 'Transaction ended'
 }
 
-rice::transaction_reset() {
-	rice_transaction_failed=false
-	rice_transaction_steps=()
-}
-
 rice::transaction_begin() {
 	if [[ $rice_transaction_in_progress == true ]]; then
 		rice::error "A transaction is already in progress!"
-	else
-		rice_transaction_in_progress=true
-		rice::transaction_reset
-		rice::transaction_did_begin
+		return 1
 	fi
+
+	rice_transaction_failed=false
+	rice_transaction_steps=()
+	rice_transaction_in_progress=true
+	rice::transaction_did_begin
 }
 
 rice::transaction_end() {
@@ -276,46 +291,53 @@ rice::rollback_did_end() {
 	rice::rollback_print_errors
 }
 
-rice::rollback_reset() {
-	rice_rollback_errors=()
-}
 
 rice::rollback_step() {
-	# split command by space
 	local step="$1"
-	IFS=' '
-	local command=($step)
-	unset IFS
+	rice::split " " "$step"
+	local command=("${_rice_split[@]}")
 	# check if the inverse command is available
 	local inverse="${command[0]}_inverse"
 
 	if hash "$inverse" 2>/dev/null; then
-		local arguments=("${command[@]:1}")
-		if $inverse "${arguments[@]}"; then
+		rice::debug "rollback:" "$inverse" "${command[@]:1}"
+		if "$inverse" "${command[@]:1}"; then
 			rice::info "Rolled back '$step'"
+			return 0
 		else
 			rice_rollback_errors+=("Couldn't roll back '$step'")
+			return 1
 		fi
 	else
 		rice_rollback_errors+=("No inverse of '$step'")
+		return 1
 	fi
+	rice::error "Unknown error '$step'"
+	return 1
 }
 
 
 rice::rollback() {
-	if [[ $rice_transaction_in_progress == false ]]; then
-		rice::error "No transaction to roll back from!"
+	local step_count=${#rice_transaction_steps[@]}
+	if (( step_count == 0 )); then
+		rice::error "No commands to roll back!"
 		return 1
 	fi
 
-	rice::rollback_reset
 	rice_rollback_in_progress=true
+	rice_rollback_failed=false
 	rice::rollback_did_begin
 
-	local step_count=${#rice_transaction_steps[@]}
-	for (( i="$step_count" - 1; i >= 0; i-- )); do
-		rice::rollback_step "${rice_transaction_steps[i]}"
+	for (( i=step_count - 1; i >= 0; i-- )); do
+		if rice::rollback_step "${rice_transaction_steps[i]}"; then
+			# if rollback was successful remove the step
+			unset "rice_transaction_steps[$i]"
+		fi
 	done
+
+	if (( ${#rice_rollback_errors} > 0 )); then
+		rice_rollback_failed=true
+	fi
 
 	rice_rollback_in_progress=false
 	rice::rollback_did_end
@@ -352,9 +374,7 @@ rice::module_loaded() {
 
 rice::module_path() {
 	local module="$1"
-	IFS=':'
-	rice__module_path=($module)
-	unset IFS
+	rice::split ':' "$module"
 }
 
 rice::module_hash() {
