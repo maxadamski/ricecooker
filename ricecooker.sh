@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+alias rice::transaction=rice::transaction_begin
+alias rice::module=rice::module_add
+alias rice::run=rice::module_run
+
 rice_ansi_none=$(tput sgr0)
 rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
@@ -63,15 +67,22 @@ rice::ask() {
 #
 
 rice::init() {
-	unset rice_transaction_in_progress
-	unset rice_transaction_failed
+	# package related
+	unset rice_pkg_install_query
+	unset rice_pkg_remove_query
+
+	# transaction related
+	rice_transaction_in_progress=false
+	rice_transaction_failed=false
 	unset rice_transaction_steps
-	unset rice_module_explicit
-	unset rice_module_meta
-	unset rice_module_list
 
 	# TODO: save steps to a file, so they are not lost
 	declare -a rice_transaction_steps
+
+	# module related
+	unset rice_module_explicit
+	unset rice_module_meta
+	unset rice_module_list
 
 	# rice_module_<option>: [module: option]
 	# module: module function name
@@ -238,7 +249,7 @@ rice::transaction_begin() {
 
 rice::transaction_end() {
 	rice_transaction_in_progress=false
-	rice::transaction_end
+	rice::transaction_did_end
 }
 
 
@@ -247,7 +258,7 @@ rice::transaction_end() {
 
 
 rice::rollback_print_errors() {
-	if [[ ${#rice_rollback_errors[@]} -ge 1 ]]; then
+	if (( ${#rice_rollback_errors[@]} >= 1 )); then
 		rice::error "Errors occurred!"
 	fi
 
@@ -281,7 +292,7 @@ rice::rollback_step() {
 	if hash "$inverse" 2>/dev/null; then
 		local arguments=("${command[@]:1}")
 		if $inverse "${arguments[@]}"; then
-			rice::info "Done '$step'"
+			rice::info "Rolled back '$step'"
 		else
 			rice_rollback_errors+=("Couldn't roll back '$step'")
 		fi
@@ -394,7 +405,7 @@ rice::module_run() {
 	done
 
 	for module in "${selected_modules[@]}"; do
-		rice::transaction
+		rice::transaction_begin
 
 		if ! "$module"; then
 			# there were errors while executing module
@@ -409,9 +420,6 @@ rice::module_run() {
 #################################
 # User interface
 #
-
-alias rice::module=rice::module_add
-alias rice::run=rice::module_run
 
 rice::usage() {
 cat <<EOF
@@ -459,10 +467,10 @@ EOF
 
 
 main() {
-	rice::init
-
 	PROGRAM_PATH=$0
 	PROGRAM_NAME=$(basename "$PROGRAM_PATH")
+	rice::init
+
 }
 
 main
