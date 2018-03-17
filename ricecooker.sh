@@ -1,34 +1,54 @@
 #!/usr/bin/env bash
-# marceli
 
-WHT=$(tput sgr0)
-RED=$(tput setaf 1)
-GRN=$(tput setaf 2)
-YLW=$(tput setaf 3)
-MAG=$(tput setaf 5)
+rice_ansi_none=$(tput sgr0)
+rice_ansi_red=$(tput setaf 1)
+rice_ansi_green=$(tput setaf 2)
+rice_ansi_yellow=$(tput setaf 3)
 
-rice::success() {
-	echo "${GRN}[done]${WHT}" "$@" 1>&2
+rice_verbose=true
+rice_silent=false
+rice_debug=true
+rice_error=1
+
+#################################
+# Helper functions
+#
+
+rice::info() {
+	if [[ $rice_verbose == true ]]; then
+		echo "rice: $*" >&2
+	fi
 }
 
-rice::warning() {
-	echo "${YLW}[warn]${WHT}" "$@" 1>&2
+rice::done() {
+	if [[ $rice_silent != true ]]; then
+		echo "rice: [done] $*" >&2
+	fi
 }
 
 rice::debug() {
-	echo "${MAG}[debug]${WHT}" "$@" 1>&2
+	if [[ $rice_debug == true ]]; then
+		echo "${rice_ansi_green}rice: $* ${rice_ansi_none}" >&2
+	fi
+}
+
+rice::warning() {
+	if [[ $rice_silent != true ]]; then
+		echo "${rice_ansi_yellow}rice: [warn]${rice_ansi_none} $*" >&2
+	fi
 }
 
 rice::error() {
-	echo "${RED}[error]${WHT}" "$@" 1>&2
+	echo "${rice_ansi_red}rice: [error]${rice_ansi_none} $*" >&2
 }
 
-rice::info() {
-	echo "[info]" "$@" 1>&2
+rice::fatal() {
+	echo "${rice_ansi_red}rice: [fatal]${rice_ansi_none} $*" >&2
+	exit $rice_error
 }
 
 rice::ask() {
-	read -p "[input] $@ (y/n) " answer
+	read -p "rice: $* (y/n) " answer
 	while ( true ); do
 		case ${answer:0:1} in
 			Y|Yes|y|yes) return 0 ;;
@@ -38,79 +58,96 @@ rice::ask() {
 	done
 }
 
-r_pkg_install_add() {
-	for package in "$@"; do
-		_packages_to_install+=($package)
-	done
+#################################
+# Maintenance
+#
+
+rice::init() {
+	unset rice_transaction_in_progress
+	unset rice_transaction_failed
+	unset rice_transaction_steps
+	unset rice_module_explicit
+	unset rice_module_meta
+	unset rice_module_list
+
+	# TODO: save steps to a file, so they are not lost
+	declare -a rice_transaction_steps
+
+	# rice_module_<option>: [module: option]
+	# module: module function name
+	# option: boolean
+	declare -A rice_module_explicit
+	declare -A rice_module_meta
+
+	# rice_module_list: [module]
+	# module: module function name
+	declare -a rice_module_list
 }
 
-r_pkg_remove_add() {
-	for package in "$@"; do
-		_packages_to_remove+=($package)
-	done
+
+#################################
+# Trivial inverse command
+#
+
+rice::mv() {
+	mv "$1" "$2"
+	local exit_code=$?
+
+	if [[ $exit_code == 0 && $rice_transaction_in_progress == true ]]; then
+		rice_transaction_steps+=("${FUNCNAME[0]} $*")
+	fi
+	return $exit_code
 }
 
-r_pkg_install() {
-	# queue packages for removal by default
-	r_pkg_install_add "$@"
-}
-
-r_pkg_remove() {
-	# queue packages for removal by default
-	r_pkg_remove_add "$@"
-}
-
-r_pkg_commit() {
-	# TODO: do not install packages removed immidiately after installation
-
-	if [[ ${_packages_to_install} ]]; then
-		# if there are packages queried for installation, install them
-		eval "${R_PKG_INSTALL}" "${_packages_to_install[@]}"
+rice::mv_inverse() {
+	if [[ $rice_transaction_in_progress == true && $rice_rollback_in_progress != true ]]; then
+		rice::error "Inverse commands are not allowed while a transaction is in progress! Run 'rice::rollback' instead."
+		return 1
 	fi
 
-	if [[ ${_packages_to_remove} ]]; then
-		# if there are packages queried for removal, remove them
-		eval "${R_PKG_REMOVE}" "${_packages_to_remove[@]}"
-	fi
+	mv "$2" "$1"
+	local exit_code=$?
 
-	# clear queues
-	_packages_to_install=()
-	_packages_to_remove=()
+	return $exit_code
 }
 
-#/predefined functions
 
+#################################
+# Bind
+#
+
+rice::bind() {
+	return 0
+}
+
+
+#################################
+# Exec
+#
 
 rice::exec() {
 	# handle current transaction context
 	if [[ $rice_transaction_failed == true ]]; then
-		rice::warning "Skipping '$@'"
+		rice::warning "Skipping '$*'"
 		return 1
 	fi
 
 	local failable=false
-	local silent=false
-	local show_output=false
-
-	# by default mute output
-	local redirect='/dev/null'
+	local show_output="${rice_verbose}"
 
 	# if lequested show output on stderr
 	if [[ $show_output == true ]]; then
-		redirect='&2'
-		"$@" 1>&2
+		"$@" >&2
 	else
-		"$@" 1>'/dev/null'
+		"$@" >/dev/null
 	fi
 
 	# now execute the command
 
 	if [[ $? == 0 ]]; then
-		if [[ $silent == false ]]; then
-			rice::success "$@"
-		fi
+		rice::info "$*"
 	else
-		rice::error "'$@' failed!"
+		rice::error "'$*' failed!"
 		if [[ $failable == false ]]; then
 			if rice::ask 'Continue?'; then
 				rice::warning 'Transaction will continue. Ignoring failure...'
@@ -124,115 +161,260 @@ rice::exec() {
 }
 
 
-rice::transaction() {
-	rice_transaction_in_progress=true
-	rice_transaction_failed=false
-	rice::info 'Transaction begin'
-	return 0
+#################################
+# Package management
+#
+
+rice::pkg_install_query_add() {
+	for package in "$@"; do
+		rice_pkg_install_query+=("$package")
+	done
 }
 
-rice::rollback() {
-	return 0
+rice::pkg_remove_query_add() {
+	for package in "$@"; do
+		rice_pkg_remove_query+=("$package")
+	done
 }
 
-rice::commit() {
-	rice_transaction_in_progress=false
-	if [[ $rice_transaction_failed == true ]]; then
-		rice_transaction_failed=false
-		# roll back by default
-		rice::info 'Rolling back transaction'
-		rice::rollback
+rice::pkg_install() {
+	# queue packages for removal by default
+	rice::pkg_install_query_add "$@"
+}
+
+rice::pkg_remove() {
+	# queue packages for removal by default
+	rice::pkg_remove_query_add "$@"
+}
+
+rice::pkg_query_commit() {
+	# TODO: do not remove packages immidiately after installation
+
+	if [[ ${rice_pkg_install_query} ]]; then
+		# if there are packages queried for installation, install them
+		"${rice_pkg_function}" -i "${rice_pkg_install_query[@]}"
 	fi
+
+	if [[ ${rice_pkg_remove_query} ]]; then
+		# if there are packages queried for removal, remove them
+		"${rice_pkg_function}" -r "${rice_pkg_remove_query[@]}"
+	fi
+
+	# clear queues
+	rice_pkg_install_query=()
+	rice_pkg_remove_query=()
 }
 
 rice::pkg() {
 	return 0
 }
 
-rice::bind() {
-	return 0
+
+#################################
+# Transactions
+#
+
+rice::transaction_did_begin() {
+	rice::info 'Transaction started'
 }
 
-rice::init() {
-	unset rice_loaded_meta_modules
-	unset rice_loaded_modules
-	unset rice_transaction_in_progress
-	unset rice_transaction_failed
+rice::transaction_did_end() {
+	rice::info 'Transaction ended'
 }
 
-rice::meta() {
-	local modules=()
+rice::transaction_reset() {
+	rice_transaction_failed=false
+	rice_transaction_steps=()
+}
 
-	for argument in "$@"; do
-		case $argument in
-			*) modules+=("$argument");;
-		esac
+rice::transaction_begin() {
+	if [[ $rice_transaction_in_progress == true ]]; then
+		rice::error "A transaction is already in progress!"
+	else
+		rice_transaction_in_progress=true
+		rice::transaction_reset
+		rice::transaction_did_begin
+	fi
+}
+
+rice::transaction_end() {
+	rice_transaction_in_progress=false
+	rice::transaction_end
+}
+
+
+#################################
+# Rollback
+
+
+rice::rollback_print_errors() {
+	if [[ ${#rice_rollback_errors[@]} -ge 1 ]]; then
+		rice::error "Errors occurred!"
+	fi
+
+	for error in "${rice_rollback_errors[@]}"; do
+		rice::error "-> $error"
 	done
+}
 
-	for module in "${modules[@]}"; do
-		IFS=':'
-		# split the arguments on purpose
-		local module_path=($module)
-		unset IFS
+rice::rollback_did_begin() {
+	rice::info 'Rollback started'
+}
 
-		if [[ ${module_path[0]} = meta && ${#module_path[@]} -gt 1 ]]; then
-			# remove the 'meta' header from module_path
-			module_path=("${module_path[@]:1}")
+rice::rollback_did_end() {
+	rice::info 'Rollback ended'
+	rice::rollback_print_errors
+}
+
+rice::rollback_reset() {
+	rice_rollback_errors=()
+}
+
+rice::rollback_step() {
+	# split command by space
+	local step="$1"
+	IFS=' '
+	local command=($step)
+	unset IFS
+	# check if the inverse command is available
+	local inverse="${command[0]}_inverse"
+
+	if hash "$inverse" 2>/dev/null; then
+		local arguments=("${command[@]:1}")
+		if $inverse "${arguments[@]}"; then
+			rice::info "Done '$step'"
 		else
-			rice::warning "Meta module '$module' will not be handled automatically!"
+			rice_rollback_errors+=("Couldn't roll back '$step'")
 		fi
-
-		rice_loaded_meta_modules+=("${module_path[@]}")
-	done
+	else
+		rice_rollback_errors+=("No inverse of '$step'")
+	fi
 }
 
-rice::module() {
+
+rice::rollback() {
+	if [[ $rice_transaction_in_progress == false ]]; then
+		rice::error "No transaction to roll back from!"
+		return 1
+	fi
+
+	rice::rollback_reset
+	rice_rollback_in_progress=true
+	rice::rollback_did_begin
+
+	local step_count=${#rice_transaction_steps[@]}
+	for (( i="$step_count" - 1; i >= 0; i-- )); do
+		rice::rollback_step "${rice_transaction_steps[i]}"
+	done
+
+	rice_rollback_in_progress=false
+	rice::rollback_did_end
+	rice::transaction_did_end
+}
+
+
+#################################
+# Transaction commit
+
+rice::commit() {
+	if [[ $rice_transaction_in_progress == false ]]; then
+		rice::error "No transaction to commit!"
+	else
+		# commit changes here if we haven't already (if we're lazy)
+		if [[ "$rice_transaction_lazy" == true ]]; then
+			rice::error "Lazy transactions not implemented!"
+		fi
+		rice::transaction_did_end
+	fi
+}
+
+
+#################################
+# Modules
+#
+
+alias rice::module=rice::module_add
+
+rice::module_loaded() {
+	local module="$1"
+	for loaded_module in "${rice_module_list[@]}"; do
+		if [[ "$loaded_module" == "$module" ]]; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+rice::module_path() {
+	local module="$1"
+	IFS=':'
+	rice__module_path=($module)
+	unset IFS
+}
+
+rice::module_hash() {
+	# TODO: think of something better
+	local module_name="$1"
+	echo "${module_name//:/____}"
+}
+
+rice::module_add() {
 	local modules=()
 	local explicit=false
+	local meta=false
 
 	for argument in "$@"; do
 		case $argument in
-			-x|--explicit) explicit=true;;
-			*) modules+=("$argument");;
+			-x|--explicit)
+				explicit=true ;;
+			-m|--meta)
+				meta=true ;;
+			*)
+				modules+=("$argument") ;;
 		esac
 	done
 
 	for module in "${modules[@]}"; do
-		IFS=':'
-		# split the arguments on purpose
-		local module_path=($module)
-		unset IFS
-
-		if [[ $explicit = true ]]; then
-			echo "--explicit"
+		if rice::module_loaded "$module"; then
+			rice::error "Module '$module' is already loaded. This might override previous module options."
 		fi
-
-		for component in "${module_path[@]}"; do
-			echo "$component"
-		done
-
-		rice_loaded_modules+=("$module")
+		rice_module_list+=("$module")
+		# dictionary key cannot contain a colon, so we generate a key
+		local key=$(rice::module_hash "$module")
+		rice_module_explicit["$key"]="$explicit"
+		rice_module_meta["$key"]="$meta"
 	done
 }
 
-rice::run_modules() {
-	if [[ ${#rice_loaded_meta_modules[@]} -eq 0 ]]; then
-		rice::error "No meta modules loaded! Aborting..."
-		return 1
-	fi
-	
-	local meta_modules=("${rice_loaded_meta_modules[@]}")
-	local modules=("${rice_loaded_modules[@]}")
+rice::module_run() {
+	local target_modules=("$@")
+	local selected_modules=()
 
-	if [[ ${#meta_modules[@]} -gt 1 ]]; then
-		rice::error "More than one meta module matching! Aborting..."
-		return 1
-	fi
-	if [[ ${#meta_modules[@]} -eq 0 ]]; then
-		rice::error "No meta module matching! Aborting..."
-		return 1
-	fi
+	for module in "${target_modules[@]}"; do
+		if ! rice::module_loaded "$module"; then
+			rice::error "Module '$module' is not loaded! Exiting..."
+			return 1
+		else
+			selected_modules+=("$module")
+		fi
+	done
+
+	for module in "${selected_modules[@]}"; do
+		rice::transaction
+		"$module"
+		local module_exit_code=$?
+
+		if [[ $module_exit_code != 0 ]]; then
+			# there were errors while executing module
+			rice::rollback
+		fi
+	done
 }
+
+
+#################################
+# User interface
+#
 
 rice::usage() {
 cat <<EOF
@@ -276,13 +458,6 @@ Scripts:
 	RICE_DIR defaults to 'HOME/.dotfiles', 'XDG_CONFIG_HOME/dotfiles'.
 
 EOF
-
-#SUBCOMMANDS:
-#rice pkg [-c|--commit] [-i|--install|-r|--remove|-h|--hold] <package>...
-#rice install [-c|--commit] [-t|--template [<yaml file>]] [--secure] [-m <permissions>] args...
-#rice install <directory|file> <directory|file>
-#rice install <directory|file>... <directory>
-#rice register [-x|--explicit] [-v|--variant <variant[/subvariant]>] [--meta] <module>
 }
 
 
@@ -290,30 +465,7 @@ main() {
 	rice::init
 
 	PROGRAM_PATH=$0
-	PROGRAM_NAME=$(basename $PROGRAM_PATH)
-
-	#if [[ $# == 0 ]]; then
-	#	_usage
-	#	exit 1
-	#fi
-
-	#if [[ $? != 0 ]]; then
-	#	echo "Invalid usage. Try 'rice --help' for more information." >&2
-	#	exit 2
-	#fi
-
-	#while getopts ':' OPTION; do
-	#	case "$OPTION" in
-
-	#		-h | --help) _HELP=true;;
-	#		\?) 
-	#			;;
-	#		--)
-	#			shift; break
-	#			;;
-	#	esac
-	#	shift
-	#done
+	PROGRAM_NAME=$(basename "$PROGRAM_PATH")
 }
 
 main

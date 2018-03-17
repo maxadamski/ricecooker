@@ -2,8 +2,9 @@
 
 . ricecooker.sh
 
-rice_transaction_flags='--safe --audit'
 rice_template_system='mustache'
+rice_transaction_audit=true
+rice_transaction_lazy=true
 
 meta:freebsd() {
 	rice_pkg_install='pkg install'
@@ -45,36 +46,38 @@ bootstrap:void:laptop() {
 
 system_config:void() {
 	# essentials
-	rice::pkg -i neovim ranger git curl tmux fish-shell calcurse calc sc-im 
+	rice::pkg neovim ranger git curl tmux fish-shell calcurse calc sc-im 
 	# security
-	rice::pkg -i gnupg pass pass-tomb nftables 
+	rice::pkg gnupg pass pass-tomb nftables 
 	# drives
-	rice::pkg -i udevil bashmount fuse-exfat exfat-utils fuse-sshfs
+	rice::pkg udevil bashmount fuse-exfat exfat-utils fuse-sshfs
 	# utilities
-	rice::pkg -i htop glances inxi bluez ConsoleKit2 ImageMagick shellcheck \
+	rice::pkg htop glances inxi bluez ConsoleKit2 ImageMagick shellcheck \
 		exiftool renameutils fdupes unp unrar zip unzip xtools baobab
 	# audio
-	rice::pkg -i alsa-utils pulseaudio pamixer pulsemixer pavucontrol apulse mpd mpc ncmpcpp
+	rice::pkg alsa-utils pulseaudio pamixer pulsemixer pavucontrol apulse mpd mpc ncmpcpp
 	# social
-	rice::pkg -i bitlbee bitlbee-facebook
+	rice::pkg bitlbee bitlbee-facebook
 	# X11
-	rice::pkg -i xorg-minimal xf86-input-libinput setxkbmap xrandr xrdb xset xsetroot \
+	rice::pkg xorg-minimal xf86-input-libinput setxkbmap xrandr xrdb xset xsetroot \
 		xbanish numlockx mkfontscale mkfontdir sct
 	# desktop environment
-	rice::pkg -i bspwm sxhkd polybar plank xlunch compton dunst alacritty \
+	rice::pkg bspwm sxhkd polybar plank xlunch compton dunst alacritty \
 		rxvt-unicode urxvt-perls sxiv mpv uzbl uzbl-tabbed
 	# document readers
-	rice::pkg -i zathura zathura-djvu zathura-ps zathura-pdf-mupdf mupdf
+	rice::pkg zathura zathura-djvu zathura-ps zathura-pdf-mupdf mupdf
 	# java
-	rice::pkg -i openjdk openjdk-jre
+	rice::pkg openjdk openjdk-jre
 	# big bloated apps
-	rice::pkg -i firefox thunderbird qbittorrent
+	rice::pkg firefox thunderbird qbittorrent
 	# fonts
-	rice::pkg -i font-symbola font-inconsolata-otf font-fira-otf \
+	rice::pkg font-symbola font-inconsolata-otf font-fira-otf \
 		noto-fonts-ttf noto-fonts-emoji ipafont-fonts-otf
 	# themes
-	rice::pkg -i xcursor-vanilla-dmz-aa papirus-icon-theme \
+	rice::pkg xcursor-vanilla-dmz-aa papirus-icon-theme \
 		gtk-engine-murrine Adapta
+
+	rice::pkg --commit
 
 	rice::info "not installing 'texlive'"
 
@@ -179,8 +182,7 @@ user_config() {
 	rice::info "not setting wallpaper 'wal -i <image>"
 }
 
-rice::info 'running ricefile'
-rice::meta meta:void meta:freebsd
+rice::module -m meta:void meta:freebsd
 rice::module -x bootstrap:void
 rice::module -x bootstrap:freebsd
 rice::module -x bootstrap:void:desktop
@@ -191,5 +193,4 @@ rice::module system_config:void
 rice::module system_config:void:desktop
 rice::module system_config:void:laptop
 rice::module user_packages user_keychain user_config
-rice::run
 
