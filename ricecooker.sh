@@ -143,7 +143,6 @@ rice::exec() {
 	fi
 
 	# now execute the command
-
 	if [[ $? == 0 ]]; then
 		rice::info "$*"
 	else
@@ -188,7 +187,7 @@ rice::pkg_remove() {
 }
 
 rice::pkg_query_commit() {
-	# TODO: do not remove packages immidiately after installation
+	# FIXME: do not remove packages immidiately after installation
 
 	if [[ ${rice_pkg_install_query} ]]; then
 		# if there are packages queried for installation, install them
@@ -309,7 +308,7 @@ rice::rollback() {
 
 	rice_rollback_in_progress=false
 	rice::rollback_did_end
-	rice::transaction_did_end
+	rice::transaction_end
 }
 
 
@@ -320,11 +319,8 @@ rice::commit() {
 	if [[ $rice_transaction_in_progress == false ]]; then
 		rice::error "No transaction to commit!"
 	else
-		# commit changes here if we haven't already (if we're lazy)
-		if [[ "$rice_transaction_lazy" == true ]]; then
-			rice::error "Lazy transactions not implemented!"
-		fi
-		rice::transaction_did_end
+		# TODO: in the future commit will execute commands lazily
+		rice::transaction_end
 	fi
 }
 
@@ -332,8 +328,6 @@ rice::commit() {
 #################################
 # Modules
 #
-
-alias rice::module=rice::module_add
 
 rice::module_loaded() {
 	local module="$1"
@@ -353,7 +347,7 @@ rice::module_path() {
 }
 
 rice::module_hash() {
-	# TODO: think of something better
+	# FIXME: think of something better
 	local module_name="$1"
 	echo "${module_name//:/____}"
 }
@@ -401,12 +395,12 @@ rice::module_run() {
 
 	for module in "${selected_modules[@]}"; do
 		rice::transaction
-		"$module"
-		local module_exit_code=$?
 
-		if [[ $module_exit_code != 0 ]]; then
+		if ! "$module"; then
 			# there were errors while executing module
 			rice::rollback
+		else
+			rice::commit
 		fi
 	done
 }
@@ -415,6 +409,9 @@ rice::module_run() {
 #################################
 # User interface
 #
+
+alias rice::module=rice::module_add
+alias rice::run=rice::module_run
 
 rice::usage() {
 cat <<EOF
