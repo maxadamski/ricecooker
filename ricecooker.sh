@@ -9,45 +9,44 @@ rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
 rice_ansi_yellow=$(tput setaf 3)
 
-rice_verbose=true
-rice_silent=false
-rice_debug=true
+rice_live_reload=true
+rice_verbosity=3
 rice_error=1
 
 #################################
 # Helper functions
 #
 
-rice::info() {
-	if [[ $rice_verbose == true ]]; then
-		echo "rice: $*" >&2
+rice::echo() {
+	local echo_level=$1
+	local message="${*:2}"
+	if (( rice_verbosity >= echo_level )); then
+		echo "$message" >&2
 	fi
+}
+
+rice::info() {
+	rice::echo 2 "rice: $*"
 }
 
 rice::done() {
-	if [[ $rice_silent != true ]]; then
-		echo "rice: [done] $*" >&2
-	fi
+	rice::echo 2 "rice: [done] $*"
 }
 
 rice::debug() {
-	if [[ $rice_debug == true ]]; then
-		echo "${rice_ansi_green}rice: $* ${rice_ansi_none}" >&2
-	fi
+	rice::echo 3 "rice: [debug] $*"
 }
 
 rice::warning() {
-	if [[ $rice_silent != true ]]; then
-		echo "${rice_ansi_yellow}rice: [warn]${rice_ansi_none} $*" >&2
-	fi
+	rice::echo 1 "${rice_ansi_yellow}rice: [warning]${rice_ansi_none} $*"
 }
 
 rice::error() {
-	echo "${rice_ansi_red}rice: [error]${rice_ansi_none} $*" >&2
+	rice::echo 1 "${rice_ansi_red}rice: [error]${rice_ansi_none} $*"
 }
 
 rice::fatal() {
-	echo "${rice_ansi_red}rice: [fatal]${rice_ansi_none} $*" >&2
+	rice::echo 1 "${rice_ansi_red}rice: [fatal]${rice_ansi_none} $*"
 	exit $rice_error
 }
 
@@ -486,7 +485,10 @@ EOF
 main() {
 	PROGRAM_PATH=$0
 	PROGRAM_NAME=$(basename "$PROGRAM_PATH")
-	rice::init
+	if [[ $rice_live_reload == false || ! $rice_initialized ]]; then
+		rice_initialized=true
+		rice::init
+	fi
 
 }
 
