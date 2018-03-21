@@ -93,7 +93,6 @@ rice::init() {
 	# transaction related
 	rice_transaction_in_progress=false
 	rice_transaction_failed=false
-	rice_rollback_failed=false
 
 	# TODO: save steps to a file, so they are not lost
 	rice_transaction_steps=()
@@ -312,36 +311,34 @@ rice::rollback_step() {
 		rice_rollback_errors+=("No inverse of '$step'")
 		return 1
 	fi
-	rice::error "Unknown error '$step'"
-	return 1
 }
 
-
-rice::rollback() {
+rice::rollback_last() {
 	local step_count=${#rice_transaction_steps[@]}
+	local step_index=$(( step_count - 1 ))
+
 	if (( step_count == 0 )); then
 		rice::error "No commands to roll back!"
 		return 1
 	fi
 
-	rice_rollback_in_progress=true
-	rice_rollback_failed=false
-	rice::rollback_did_begin
+	if rice::rollback_step "${rice_transaction_steps[step_index]}"; then
+		# if rollback was successful remove the step
+		unset "rice_transaction_steps[$step_index]"
+	fi
+}
 
-	for (( i=step_count - 1; i >= 0; i-- )); do
-		if rice::rollback_step "${rice_transaction_steps[i]}"; then
-			# if rollback was successful remove the step
-			unset "rice_transaction_steps[$i]"
-		fi
-	done
+rice::rollback_all() {
+	local step_count=${#rice_transaction_steps[@]}
 
-	if (( ${#rice_rollback_errors} > 0 )); then
-		rice_rollback_failed=true
+	if (( step_count == 0 )); then
+		rice::error "No commands to roll back!"
+		return 1
 	fi
 
-	rice_rollback_in_progress=false
-	rice::rollback_did_end
-	rice::transaction_end
+	for (( i=step_count - 1; i >= 0; i-- )); do
+		rice::rollback_last
+	done
 }
 
 
