@@ -34,7 +34,7 @@ rice::done() {
 }
 
 rice::debug() {
-	rice::echo 3 "rice: [debug] $*"
+	rice::echo 3 "${rice_ansi_green}rice: [debug]${rice_ansi_none} $*"
 }
 
 rice::warning() {
@@ -289,41 +289,65 @@ rice::rollback_did_end() {
 	rice::rollback_print_errors
 }
 
-
+# Rolls back given command
+# Usage:
+#	rice::rollback_step <command>
+# Example:
+#	`rice::rollback_step mv file1 file2`
+#	executes
+#	`mv_inverse file1 file2`
+# Returns:
+#	- 0 if successful
+#	- 1 if an error ocurred
+#		
 rice::rollback_step() {
 	local step="$1"
 	rice::split " " "$step"
 	local command=("${_rice_split[@]}")
-	# check if the inverse command is available
 	local inverse="${command[0]}_inverse"
 
-	if hash "$inverse" 2>/dev/null; then
+	rice_rollback_step__last_step="$step"
+	rice_rollback_step__last_inverse="$inverse"
+	rice_rollback_step__last_error=""
+
+	# check if the inverse command is available
+	if ! hash "$inverse" &> /dev/null; then
+		rice_rollback_errors="no inverse"
+		("No inverse of '$step'")
+
+	fi
+
 		rice::debug "rollback:" "$inverse" "${command[@]:1}"
-		if "$inverse" "${command[@]:1}"; then
-			rice::info "Rolled back '$step'"
+		if ! "$inverse" "${command[@]:1}"; then
+			rice_rollback_step__last_error="external error"
+			return 1
+		else
+			rice::info "rolled back '$step'"
 			return 0
 		else
-			rice_rollback_errors+=("Couldn't roll back '$step'")
-			return 1
 		fi
 	else
-		rice_rollback_errors+=("No inverse of '$step'")
 		return 1
 	fi
+
 }
 
+# Rolls back the last step in `rice_transaction_steps`, then removes it.
+# 
 rice::rollback_last() {
 	local step_count=${#rice_transaction_steps[@]}
-	local step_index=$(( step_count - 1 ))
 
 	if (( step_count == 0 )); then
 		rice::error "No commands to roll back!"
 		return 1
 	fi
 
-	if rice::rollback_step "${rice_transaction_steps[step_index]}"; then
-		# if rollback was successful remove the step
-		unset "rice_transaction_steps[$step_index]"
+	if rice::rollback_step "${rice_transaction_steps[-1]}"; then
+		unset "rice_transaction_steps[-1]"
+		return 0
+	else
+		rice::error "${rice_rollback_errors[-1]}"
+		return 1
 	fi
 }
 
@@ -336,10 +360,45 @@ rice::rollback_all() {
 	fi
 
 	for (( i=step_count - 1; i >= 0; i-- )); do
-		rice::rollback_last
+		if rice::rollback_step "${rice_transaction_steps[i]}"; then
+			unset "rice_transaction_steps[$i]"
+		fi
 	done
+
+	for error in "${rice_rollback_errors[@]}"; do
+		rice::error "$error"
+	done
+
+	if (( ${#rice_rollback_errors[@]} == 0 )); then
+		return 0
+	else
+		return 1
+	fi
 }
 
+rice::transaction_step() {
+	rice_transaction_steps+=("$*")
+
+	if (( rice_verbosity > 0 )); then
+		"$@" >&2
+	else
+		"$@" &> /dev/null
+	fi
+
+	local exit_code="$?"
+
+	if (( exit_code != 0 )); then
+		rice::error "$*"
+	else
+		rice::info "$*"
+	fi
+
+	return $exit_code
+}
+
+rice::transaction_reset() {
+	rice_transaction_steps=()
+}
 
 #################################
 # Transaction commit
