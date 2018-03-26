@@ -10,7 +10,9 @@ rice_ansi_green=$(tput setaf 2)
 rice_ansi_yellow=$(tput setaf 3)
 
 rice_live_reload=true
-rice_verbosity=3
+if [[ ! $rice_verbosity ]]; then
+	rice_verbosity=3
+fi
 rice_error=1
 
 #################################
@@ -110,20 +112,6 @@ rice::init() {
 	# module: module function name
 	rice_module_list=()
 }
-
-
-#################################
-# Trivial inverse command
-#
-
-rice::mv() {
-	mv "$1" "$2"
-}
-
-rice::mv_inverse() {
-	mv "$2" "$1"
-}
-
 
 #################################
 # Bind
