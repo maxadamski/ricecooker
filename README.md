@@ -16,6 +16,18 @@ Work in progress.
 - [x] Use a template engine (mustache by default) to keep your configuration DRY
 - [x] Works great with version control.
 
+## Progress
+
+- [x] Mock CLI
+- [x] Module mechanism
+- [x] Rollback mechanism
+- [ ] Module hierarchy
+- [ ] Bind command
+- [ ] Pkg command
+- [ ] Finish CLI
+- [ ] Convenience commands
+- [ ] Full test coverage
+
 ## Caveats
 
 Only some commands can be rolled back, although it is possible implement the inverse of arbitrary commands, making them compatible.
@@ -122,7 +134,7 @@ rice::module user_packages user_keychain user_config
 rice::module user_config:void user_config:macos
 ```
 
-## Usage
+## Usage (subject to change)
 
 ```man
 Rice Cooker: a do-it-yourself configuration manager
