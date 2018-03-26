@@ -69,12 +69,12 @@ rice::ask() {
 #	- string: the string you want to spit
 #
 # Side effects:
-#	- sets `_rice_split` to the result of the splitting
+#	- sets `rice_split__output` to the result of the splitting
 rice::split() {
 	local delimiter="$1"
 	local string="$2"
-	readarray -t -d "$delimiter" _rice_split <<< "$string$delimiter"
-	unset '_rice_split[-1]'
+	readarray -t -d "$delimiter" rice_split__output <<< "$string$delimiter"
+	unset 'rice_split__output[-1]'
 }
 
 
@@ -225,16 +225,6 @@ rice::transaction_end() {
 	return 0
 }
 
-rice::rollback_print_errors() {
-	if (( ${#rice_rollback_errors[@]} >= 1 )); then
-		rice::error "Errors occurred!"
-	fi
-
-	for error in "${rice_rollback_errors[@]}"; do
-		rice::error "-> $error"
-	done
-}
-
 rice::rollback_did_begin() {
 	rice::info 'Rollback started'
 }
@@ -245,14 +235,10 @@ rice::rollback_did_end() {
 }
 
 rice::transaction_remove_last_step() {
-	local step_count=${#rice_transaction_steps[@]}
-
-	if (( step_count == 0 )); then
-		rice::error "No commands to roll back!"
+	if ! unset "rice_transaction_steps[-1]"; then
 		return 1
 	fi
-
-	unset step_count[step_count - 1]
+	return 0
 }
 
 # Rolls back given command
@@ -269,58 +255,59 @@ rice::transaction_remove_last_step() {
 #
 # Side effects:
 #	- sets `rice_rollback_step__last_error` to error message, if one occurred
-#	- sets `rice_rollback_step__last_step` to the given command
-#	- sets `rice_rollback_step__last_inverse` to the inverse of the given command
 rice::rollback_step() {
 	# split the given command by space, to get the program name
-	local step="$1"
+	local step="$*"
 	rice::split " " "$step"
-	local command=("${_rice_split[@]}")
-	local inverse="${command[0]}_inverse"
-
-	rice_rollback_step__last_step="$step"
-	rice_rollback_step__last_inverse="$inverse"
-	rice_rollback_step__last_error=""
+	local step=("${rice_split__output[@]}")
+	local inverse="${step[0]}_inverse"
 
 	# check if the inverse command is available
 	if ! hash "$inverse" &> /dev/null; then
-		rice_rollback_step__last_error="no inverse"
+		rice_rollback_step__error="no inverse"
 		return 1
 	fi
 
-	rice::debug "rollback:" "$inverse" "${command[@]:1}"
-	if ! "$inverse" "${command[@]:1}"; then
-		rice_rollback_step__last_error="external error"
-		return $?
+	if ! "$inverse" "${step[@]:1}"; then
+		rice_rollback_step__error="external error"
+		return 1
 	fi
 
-	rice::info "rolled back '$step'"
+	rice_rollback_step__error=""
 	return 0
 }
 
-# Rolls back the last step in `rice_transaction_steps`, then removes it.
-#
-# Side effects:
-#	- Removes the last element of `rice_transaction_steps`
-#
-# Fails:
-#	- if `rice_transaction_steps` is empty
 rice::rollback_last() {
-	local step_count=${#rice_transaction_steps[@]}
-
-	if (( step_count == 0 )); then
-		rice::error "No commands to roll back!"
+	if (( ${#rice_transaction_steps} < 1 )); then
+		rice_rollback_last__error="no commands to roll back"
 		return 1
 	fi
 
-	if ! rice::rollback_step "${rice_transaction_steps[step_count - 1]}"; then
-		rice::error "rollback: '$rice_rollback_step__last_step' - $rice_rollback_step__last_error"
+	rice::info "${rice_transaction_steps[-1]}"
+	if ! rice::rollback_step "${rice_transaction_steps[-1]}"; then
+		rice_rollback_last__error="rollback unsuccessful"
 		return 1
 	fi
 
-	unset "rice_transaction_steps[-1]"
+	rice_rollback_last__error=""
 	return 0
 }
+
+rice::rollback_last_removing() {
+	if ! rice::rollback_last; then
+		rice_rollback_last_removing__error="$rice_rollback_last__error"
+		return 1
+	fi
+
+	if ! rice::transaction_remove_last_step; then
+		rice_rollback_last_removing__error="could not remove last step"
+		return 1
+	fi
+
+	rice_rollback_last_removing__error=""
+	return 0
+}
+
 
 # Rolls back all steps in `rice_transaction_steps`, then removes them.
 #
@@ -328,28 +315,25 @@ rice::rollback_last() {
 #	- Removes all elemensts from `rice_rollback_steps`
 #
 rice::rollback_all() {
-	local step_count=${#rice_transaction_steps[@]}
+	rice_rollback_all__safe=true
+	rice_rollback_all__errors=()
 
-	if (( step_count == 0 )); then
-		rice::error "No commands to roll back!"
-		return 1
-	fi
-
-	for (( i=step_count - 1; i >= 0; i-- )); do
-		if rice::rollback_step "${rice_transaction_steps[i]}"; then
-			unset "rice_transaction_steps[$i]"
+	for (( i=${#rice_transaction_steps[@]} - 1; i >= 0; i-- )); do
+		if ! rice::rollback_last_removing; then
+			rice_rollback_all__errors=("${rice_transaction_steps[i]}: $rice_rollback_step__last_error")
+			if [[ $rice_rollback_all__safe == true ]]; then
+				rice::error "rollback aborted!"
+				break
+			fi
 		fi
 	done
 
-	for error in "${rice_rollback_errors[@]}"; do
-		rice::error "$error"
-	done
-
-	if (( ${#rice_rollback_errors[@]} == 0 )); then
-		return 0
-	else
+	if (( ${#rice_rollback_all__errors[@]} > 0 )); then
+		rice::rollback_print_errors
 		return 1
 	fi
+
+	return 0
 }
 
 rice::transaction_step() {
@@ -374,6 +358,12 @@ rice::transaction_step() {
 
 rice::transaction_reset() {
 	rice_transaction_steps=()
+}
+
+rice::rollback_print_errors() {
+	for error in "${rice_rollback_all__errors[@]}"; do
+		rice::error "$error"
+	done
 }
 
 #################################
