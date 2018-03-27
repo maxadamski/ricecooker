@@ -27,7 +27,7 @@ init_ricecooker() {
 	. ricecooker.sh
 }
 
-test_rollback_last__without_transaction() {
+test__rollback_last__without_transaction() {
 	init_ricecooker
 	init_rollback_last
 
@@ -42,7 +42,7 @@ test_rollback_last__without_transaction() {
 	assertTrue "! [[ -f tmp/b ]]"
 }
 
-test_rollback_last__without_transaction__bad_external_command() {
+test__rollback_last__without_transaction__bad_external_command() {
 	init_ricecooker
 	init_rollback_last
 
@@ -59,7 +59,7 @@ test_rollback_last__without_transaction__bad_external_command() {
 	assertTrue "! [[ -f tmp/n ]]"
 }
 
-test_rollback_last__without_transaction__no_inverse_command() {
+test__rollback_last__without_transaction__no_inverse_command() {
 	init_ricecooker
 	init_rollback_last
 
@@ -75,7 +75,7 @@ test_rollback_last__without_transaction__no_inverse_command() {
 	assertTrue "! [[ -f tmp/a ]]"
 }
 
-test_rollback_last_removing__no_steps() {
+test__rollback_last_removing__no_steps() {
 	init_ricecooker
 	init_rollback_last
 
@@ -86,7 +86,7 @@ test_rollback_last_removing__no_steps() {
 	assertEquals 0 "${#rice_transaction_steps[@]}"
 }
 
-test_rollback_last_removing__without_transaction__multiple() {
+test__rollback_last_removing__without_transaction__multiple() {
 	init_ricecooker
 	init_rollback_last
 
@@ -100,7 +100,7 @@ test_rollback_last_removing__without_transaction__multiple() {
 	assertTrue "! [[ -f tmp/b ]]"
 }
 
-test_rollback_last_removing__without_transaction__multiple() {
+test__rollback_last_removing__without_transaction__multiple() {
 	init_ricecooker
 	init_rollback_last
 
@@ -118,7 +118,7 @@ test_rollback_last_removing__without_transaction__multiple() {
 	assertTrue "! [[ -f tmp/d ]]"
 }
 
-test_transaction_step__external_success() {
+test__transaction_step__external_success() {
 	init_ricecooker
 
 	rice::transaction_step true
@@ -128,7 +128,7 @@ test_transaction_step__external_success() {
 	assertEquals "true" "${rice_transaction_steps[0]}"
 }
 
-test_transaction_step__external_failure() {
+test__transaction_step__external_failure() {
 	init_ricecooker
 
 	rice::transaction_step false

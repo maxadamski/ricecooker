@@ -9,11 +9,10 @@ rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
 rice_ansi_yellow=$(tput setaf 3)
 
-rice_live_reload=true
-if [[ ! $rice_verbosity ]]; then
-	rice_verbosity=3
-fi
-rice_error=1
+[[ ! $rice_transaction_break_on_fail ]] && rice_transaction_break_on_fail=true
+[[ ! $rice_live_reload ]] && rice_live_reload=true
+[[ ! $rice_verbosity ]] && rice_verbosity=3
+[[ ! $rice_error ]] && rice_error=1
 
 #################################
 # Helper functions
@@ -173,14 +172,6 @@ rice::pkg() {
 # Transactions
 #
 
-rice::transaction_did_begin() {
-	rice::info 'Transaction started'
-}
-
-rice::transaction_did_end() {
-	rice::info 'Transaction ended'
-}
-
 # Begins a new transaction
 #
 # Side effects:
@@ -199,7 +190,6 @@ rice::transaction_begin() {
 	rice_transaction_failed=false
 	rice_transaction_steps=()
 	rice_transaction_in_progress=true
-	rice::transaction_did_begin
 	return 0
 }
 
@@ -209,17 +199,7 @@ rice::transaction_begin() {
 #	- sets `rice_transaction_in_progress` to false
 rice::transaction_end() {
 	rice_transaction_in_progress=false
-	rice::transaction_did_end
 	return 0
-}
-
-rice::rollback_did_begin() {
-	rice::info 'Rollback started'
-}
-
-rice::rollback_did_end() {
-	rice::info 'Rollback ended'
-	rice::rollback_print_errors
 }
 
 rice::transaction_remove_last_step() {
@@ -273,7 +253,7 @@ rice::rollback_last() {
 
 	rice::info "${rice_transaction_steps[-1]}"
 	if ! rice::rollback_step "${rice_transaction_steps[-1]}"; then
-		rice_rollback_last__error="rollback unsuccessful"
+		rice_rollback_last__error=$rice_rollback_step__error
 		return 1
 	fi
 
@@ -308,7 +288,7 @@ rice::rollback_all() {
 
 	for (( i=${#rice_transaction_steps[@]} - 1; i >= 0; i-- )); do
 		if ! rice::rollback_last_removing; then
-			rice_rollback_all__errors=("${rice_transaction_steps[i]}: $rice_rollback_step__last_error")
+			rice_rollback_all__errors=("${rice_transaction_steps[i]}: ${rice_rollback_last__error}")
 			if [[ $rice_rollback_all__safe == true ]]; then
 				rice::error "rollback aborted!"
 				break
@@ -325,6 +305,11 @@ rice::rollback_all() {
 }
 
 rice::transaction_step() {
+	if [[ $rice_transaction_break_on_fail == true && $rice_transaction_failed == true ]]; then
+		rice::info "skipping '$*'"
+		return 1
+	fi
+
 	rice_transaction_steps+=("$*")
 
 	if (( rice_verbosity > 0 )); then
@@ -333,15 +318,18 @@ rice::transaction_step() {
 		"$@" &> /dev/null
 	fi
 
-	local exit_code="$?"
+	rice_transaction_step__exit_code="$?"
 
-	if (( exit_code != 0 )); then
+	if [[ $rice_transaction_step__exit_code != 0 ]]; then
+		if [[ $rice_transaction_in_progress == true ]]; then
+			rice_transaction_failed=true
+		fi
 		rice::error "$*"
-	else
-		rice::info "$*"
+		return $rice_transaction_step__exit_code
 	fi
 
-	return $exit_code
+	rice::info "$*"
+	return 0
 }
 
 rice::transaction_reset() {
@@ -349,6 +337,7 @@ rice::transaction_reset() {
 }
 
 rice::rollback_print_errors() {
+	rice::error "following errors occured during rollback:"
 	for error in "${rice_rollback_all__errors[@]}"; do
 		rice::error "$error"
 	done
@@ -420,7 +409,30 @@ rice::module_add() {
 	done
 }
 
-rice::module_run() {
+rice::module_run_one() {
+	local module="$1"
+	rice::transaction_begin
+	"$module"
+	rice_module_run_one__exit_code="$?"
+	rice::transaction_end
+
+	if [[ "$rice_transaction_failed" == true || "$rice_module_run_one__exit_code" != 0 ]]; then
+		rice::rollback_all
+		return 1
+	fi
+
+	return 0
+}
+
+rice::module_run_all() {
+	local modules=("$@")
+	for module in "${modules[@]}"; do
+		rice::module_run_one "$module"
+	done
+	return 0
+}
+
+rice::run() {
 	local target_modules=("$@")
 	local selected_modules=()
 
