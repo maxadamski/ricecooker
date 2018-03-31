@@ -6,5 +6,5 @@ if [ ! -d lib/shunit2-2.1.7 ] ; then \
 	:	tar xz -C lib ; \
 fi
 
-tests/module_test.sh
-tests/rollback_test.sh
+test/module_test.sh
+test/rollback_test.sh

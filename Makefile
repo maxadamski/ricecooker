@@ -1,5 +1,5 @@
 .PHONY: test
 
 test:
-
-	bash test.sh
+	@rm -rf coverage
+	@kcov --exclude-path='lib,test,run_tests.sh' coverage run_tests.sh
