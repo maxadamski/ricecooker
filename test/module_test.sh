@@ -3,7 +3,7 @@
 init_ricecooker() {
 	rice_transaction_steps=()
 	rice_verbosity=1
-	. ricecooker.sh
+	. src/ricecooker.sh
 	rice::init
 }
 
