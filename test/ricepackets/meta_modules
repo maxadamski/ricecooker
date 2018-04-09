@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+meta:system_a() {
+	run echo 'executing meta activity for system_a'
+}
+
+meta:system_b() {
+	run echo 'executing meta activity for system_b'
+}
+
+activity_a:system_a() {
+	run echo 'executing activity_a for system_a'
+}
+
+activity_a:system_b() {
+	run echo 'executing activity_a for system_b'
+}
+
+activity_b:system_a() {
+	run echo 'executing activity_b for system_a'
+}
+
+activity_b:system_b() {
+	run echo 'executing activity_b for system_b'
+}
+
+rice::module -m meta:system_a
+rice::module -m meta:system_b
+rice::module -x activity_a:system_a
+rice::module -x activity_a:system_b
+rice::module activity_b:system_a
+rice::module activity_b:system_b

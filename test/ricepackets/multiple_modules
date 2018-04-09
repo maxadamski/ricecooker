@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+meta:system_a() {
+	run echo 'executing meta activity for system_a'
+}
+
+activity_a:variant_a() {
+	run echo 'executing activity_a for variant_a'
+}
+
+activity_a:variant_b() {
+	run echo 'executing activity_a for variant_b'
+}
+
+activity_b:variant_a() {
+	run echo 'executing activity_b for variant_a'
+}
+
+activity_b:variant_b() {
+	run echo 'executing activity_b for variant_b'
+}
+
+rice::module -m meta:system_a
+rice::module -x activity_a:variant_a
+rice::module -x activity_a:variant_b
+rice::module activity_b:variant_a
+rice::module activity_b:variant_b
