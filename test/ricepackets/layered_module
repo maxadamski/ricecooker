@@ -63,31 +63,31 @@
 # Group 1
 
 activity() {
-	rice::exec echo 'activity()'
+	rice::exec true
 }
 
 # Group 2
 
 activity:setup_a() {
-	rice::exec echo 'activity:setup_a()'
+	rice::exec true
 }
 
 activity:setup_a:machine_a() {
-	rice::exec echo 'activity:setup_a:machine_a()'
+	rice::exec true
 }
 
 activity:setup_a:machine_b() {
-	rice::exec echo 'activity:setup_a:machine_b()'
+	rice::exec true
 }
 
 # Group 3
 
 activity:machine_a() {
-	rice::exec echo 'activity:machine_a()'
+	rice::exec true
 }
 
 activity:machine_a:setup_a() {
-	rice::exec echo 'activity:machine_a:setup_a()'
+	rice::exec true
 }
 
 # Add modules

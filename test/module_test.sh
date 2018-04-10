@@ -23,6 +23,14 @@ module_fail() {
 	return 1
 }
 
+module_a() {
+	rice::exec true
+}
+
+module_b() {
+	rice::exec true
+}
+
 module_tran_fail() {
 	rice::transaction_step false
 }
@@ -35,58 +43,58 @@ module_tran_fail_mult() {
 	rice::transaction_step true
 }
 
-test__module_add__one() {
+test__add__one() {
 	init_ricecooker
 
-	rice::module_add bootstrap:void
+	rice::add bootstrap:void
 
 	assertEquals 1 "${#rice_module_list[@]}"
 	assertEquals "bootstrap:void" "${rice_module_list[0]}"
 }
 
-test__module_add__one__explicit() {
+test__add__one__explicit() {
 	init_ricecooker
 
-	rice::module_add -x bootstrap:void
+	rice::add -x bootstrap:void
 
 
 	assertEquals 1 "${#rice_module_list[@]}"
 	assertEquals "bootstrap:void" "${rice_module_list[0]}"
-	assertEquals true ${rice_module_explicit[$key]}
-	assertEquals false ${rice_module_meta[$key]}
+	assertEquals true ${rice_module_explicit[0]}
+	assertEquals false ${rice_module_meta[0]}
 }
 
-test__module_add__one__meta() {
+test__add__one__meta() {
 	init_ricecooker
 
-	rice::module_add -m bootstrap:void
+	rice::add -m bootstrap:void
 
 	assertEquals 1 "${#rice_module_list[@]}"
 	assertEquals "bootstrap:void" "${rice_module_list[0]}"
-	assertEquals false ${rice_module_explicit[$key]}
-	assertEquals true ${rice_module_meta[$key]}
+	assertEquals false ${rice_module_explicit[0]}
+	assertEquals true ${rice_module_meta[0]}
 }
 
-test__module_run_one__success__without_transaction() {
+test__run_one__success__without_transaction() {
 	init_ricecooker
 
-	rice::module_run_one module_succ
+	rice::run_one module_succ
 
 	assertEquals 0 $?
 }
 
-test__module_run_one__success__without_transaction() {
+test__run_one__success__without_transaction() {
 	init_ricecooker
 
-	rice::module_run_one module_fail
+	rice::run_one module_fail
 
 	assertEquals 1 $?
 }
 
-test__module_run_one__success() {
+test__run_one__success() {
 	init_ricecooker
 
-	rice::module_run_one module_tran_succ
+	rice::run_one module_tran_succ
 
 	assertEquals 0 $?
 	assertEquals false "$rice_transaction_in_progress"
@@ -95,10 +103,10 @@ test__module_run_one__success() {
 	assertEquals "true" "${rice_transaction_steps[0]}"
 }
 
-test__module_run_one__fail__break_on_fail() {
+test__run_one__fail__break_on_fail() {
 	init_ricecooker
 
-	rice::module_run_one module_tran_fail &> /dev/null
+	rice::run_one module_tran_fail &> /dev/null
 
 	assertEquals 1 $?
 	assertEquals false "$rice_transaction_in_progress"
@@ -107,11 +115,11 @@ test__module_run_one__fail__break_on_fail() {
 	assertEquals "false" "${rice_transaction_steps[0]}"
 }
 
-test__module_run_one__fail__no_break_on_fail() {
+test__run_one__fail__no_break_on_fail() {
 	init_ricecooker
 	rice_transaction_break_on_fail=false
 
-	rice::module_run_one module_tran_fail &> /dev/null
+	rice::run_one module_tran_fail &> /dev/null
 
 	assertEquals 1 $?
 	assertEquals false "$rice_transaction_in_progress"
@@ -120,11 +128,11 @@ test__module_run_one__fail__no_break_on_fail() {
 	assertEquals "false" "${rice_transaction_steps[0]}"
 }
 
-test__module_run_one__fail__break_on_fail__multiple_commands() {
+test__run_one__fail__break_on_fail__multiple_commands() {
 	init_ricecooker
 	rice_transaction_break_on_fail=true
 
-	rice::module_run_one module_tran_fail_mult &> /dev/null
+	rice::run_one module_tran_fail_mult &> /dev/null
 
 	assertEquals 1 $?
 	assertEquals false "$rice_transaction_in_progress"
@@ -135,11 +143,11 @@ test__module_run_one__fail__break_on_fail__multiple_commands() {
 	assertEquals "false" "${rice_transaction_steps[2]}"
 }
 
-test__module_run_one__fail__break_on_fail__multiple_commands() {
+test__run_one__fail__break_on_fail__multiple_commands() {
 	init_ricecooker
 	rice_transaction_break_on_fail=false
 
-	rice::module_run_one module_tran_fail_mult &> /dev/null
+	rice::run_one module_tran_fail_mult &> /dev/null
 
 	assertEquals 1 $?
 	assertEquals false "$rice_transaction_in_progress"
@@ -150,6 +158,22 @@ test__module_run_one__fail__break_on_fail__multiple_commands() {
 	assertEquals "false" "${rice_transaction_steps[2]}"
 	assertEquals "true" "${rice_transaction_steps[3]}"
 	assertEquals "true" "${rice_transaction_steps[4]}"
+}
+
+test__run_all__success() {
+	init_ricecooker
+	rice::run_all module_a module_b
+
+	assertEquals 0 $?
+	assertEquals "0 0" "${rice_run_all__exit_codes[*]}"
+}
+
+test__run_all__fail() {
+	init_ricecooker
+	rice::run_all module_a module_fail
+
+	assertEquals 1 $?
+	assertEquals "0 1" "${rice_run_all__exit_codes[*]}"
 }
 
 . lib/shunit2-2.1.7/shunit2

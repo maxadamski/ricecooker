@@ -1,27 +1,63 @@
 #!/usr/bin/env bash
 
 meta:system_a() {
-	run echo 'executing meta activity for system_a'
+	rice::exec true
+}
+
+activity_a() {
+	rice::exec true
 }
 
 activity_a:variant_a() {
-	run echo 'executing activity_a for variant_a'
+	rice::exec true
 }
 
 activity_a:variant_b() {
-	run echo 'executing activity_a for variant_b'
+	rice::exec true
+}
+
+activity_b() {
+	rice::exec true
 }
 
 activity_b:variant_a() {
-	run echo 'executing activity_b for variant_a'
+	rice::exec true
 }
 
 activity_b:variant_b() {
-	run echo 'executing activity_b for variant_b'
+	rice::exec true
 }
 
-rice::module -m meta:system_a
-rice::module -x activity_a:variant_a
-rice::module -x activity_a:variant_b
-rice::module activity_b:variant_a
-rice::module activity_b:variant_b
+activity_c() {
+	rice::exec true
+}
+
+activity_d() {
+	rice::exec true
+}
+
+activity_d:variant_a() {
+	rice::exec true
+}
+
+activity_x() {
+	rice::exec true
+}
+
+activity_y() {
+	rice::exec true
+}
+
+rice::add -m meta:system_a
+rice::add activity_a
+rice::add activity_a:variant_a
+rice::add activity_a:variant_b
+rice::add activity_b
+rice::add activity_b:variant_a
+rice::add activity_b:variant_b
+rice::add activity_c
+rice::add activity_d
+rice::add activity_d:variant_a
+rice::add -x activity_x
+rice::add -x activity_y
+

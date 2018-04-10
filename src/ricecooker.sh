@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-#alias rice::transaction=rice::transaction_begin
-#alias rice::module=rice::module_add
-#alias rice::run=rice::module_run
-#alias rice::add=rice::module_add
-
 rice_ansi_none=$(tput sgr0)
 rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
@@ -16,6 +11,22 @@ rice_ansi_yellow=$(tput setaf 3)
 [[ ! $rice_live_reload ]] && rice_live_reload=true
 [[ ! $rice_verbosity ]] && rice_verbosity=3
 [[ ! $rice_error ]] && rice_error=1
+
+unset rice_module_list
+rice_module_list=()
+
+unset rice_module_explicit
+rice_module_explicit=()
+
+unset rice_module_meta
+rice_module_meta=()
+
+rice_pkg_install_query=()
+rice_pkg_remove_query=()
+
+rice_transaction_in_progress=false
+rice_transaction_failed=false
+rice_transaction_steps=()
 
 #################################
 # Helper functions
@@ -89,30 +100,6 @@ rice::split() {
 rice::init() {
 	rice::debug "Initializing..."
 
-	# package related
-	rice_pkg_install_query=()
-	rice_pkg_remove_query=()
-
-	# transaction related
-	rice_transaction_in_progress=false
-	rice_transaction_failed=false
-
-	# TODO: save steps to a file, so they are not lost
-	rice_transaction_steps=()
-
-	# module related
-	rice_module_explicit=()
-	rice_module_meta=()
-
-	# rice_module_<option>: [module: option]
-	# module: module function name
-	# option: boolean
-	declare -A rice_module_explicit
-	declare -A rice_module_meta
-
-	# rice_module_list: [module]
-	# module: module function name
-	rice_module_list=()
 }
 
 #################################
@@ -363,9 +350,9 @@ rice::commit() {
 }
 
 
-#################################
-# Modules
-#
+###############################################################################
+# ADD MODULE
+###############################################################################
 
 rice::module_loaded() {
 	local module="$1"
@@ -377,57 +364,54 @@ rice::module_loaded() {
 	return 1
 }
 
-rice::module_path() {
-	local module="$1"
-	rice::split ':' "$module"
-}
-
-rice::module_hash() {
-	# FIXME: think of something better
-	local module_name="$1"
-	echo "${module_name//:/____}"
-}
-
-rice::module_add() {
+rice::add() {
 	local modules=()
 	local explicit=false
 	local meta=false
 
+	# Parse arguments
+
 	for argument in "$@"; do
-		case $argument in
+		case "$argument" in
 			-x|--explicit)
-				explicit=true ;;
+				explicit=true
+				;;
 			-m|--meta)
-				meta=true ;;
+				meta=true
+				;;
 			*)
-				modules+=("$argument") ;;
+				modules+=("$argument")
+				;;
 		esac
 	done
+
+	# Save module
 
 	for module in "${modules[@]}"; do
 		if rice::module_loaded "$module"; then
 			rice::error "Module '$module' is already loaded. This might override previous module options."
 		fi
 		rice_module_list+=("$module")
-		# dictionary key cannot contain a colon, so we generate a key
-		local key=$(rice::module_hash "$module")
-		rice_module_explicit["$key"]="$explicit"
-		rice_module_meta["$key"]="$meta"
+		rice_module_explicit+=("$explicit")
+		rice_module_meta+=("$meta")
 	done
+
+	return 0
 }
 
-rice::add() {
-	rice::module_add "$@"
-}
 
-rice::module_run_one() {
+###############################################################################
+# RUN MODULES
+###############################################################################
+
+rice::run_one() {
 	local module="$1"
 	rice::transaction_begin
 	"$module"
-	rice_module_run_one__exit_code="$?"
+	rice_run_one__exit_code="$?"
 	rice::transaction_end
 
-	if [[ "$rice_transaction_failed" == true || "$rice_module_run_one__exit_code" != 0 ]]; then
+	if [[ "$rice_transaction_failed" == true || "$rice_run_one__exit_code" != 0 ]]; then
 		rice::rollback_all
 		return 1
 	fi
@@ -435,17 +419,22 @@ rice::module_run_one() {
 	return 0
 }
 
-rice::module_run_all() {
-	local modules=("$@")
-	for module in "${modules[@]}"; do
-		rice::module_run_one "$module"
+rice::run_all() {
+	rice_run_all__exit_codes=()
+
+	for module in "$@"; do
+		rice::run_one "$module"
+		rice_run_all__exit_codes+=("$rice_run_one__exit_code")
 	done
+
+	for exit_code in "${rice_run_all__exit_codes[@]}"; do
+		if [[ $exit_code != 0 ]]; then
+			return 1
+		fi
+	done
+
 	return 0
 }
-
-#################################
-# Runner
-#
 
 # usage: rice::run [-M] [-m modules...] [-p pattern]
 # TODO: refactor this monster
@@ -453,12 +442,11 @@ rice::run() {
 	rice_run__last_statuses=()
 	rice_run__last_modules=()
 
-	local explicit_modules=()
+	local selected_modules=()
 	local pattern=''
 	local run_all=false
 	local no_meta=false
 
-	#################
 	# Parse arguments
 
 	local reading_pattern=false
@@ -486,7 +474,7 @@ rice::run() {
 			*)
 				reading_list=true
 				if   [[ $reading_modules == true ]]; then
-					explicit_modules+=("$argument")
+					selected_modules+=("$argument")
 				elif [[ $reading_pattern == true ]]; then
 					pattern="$argument"
 				fi
@@ -499,77 +487,71 @@ rice::run() {
 		fi
 	done
 
-	#################
 	# Filter & run
 
-	for module in "${rice_module_list[@]}"; do
-		local key=$(rice::module_hash "$module")
-		local is_explicit=${rice_module_explicit["$key"]}
-		local is_meta=${rice_module_meta["$key"]}
+	for (( module_i=0; module_i < ${#rice_module_list[@]}; module_i++ )); do
+		local module=${rice_module_list[$module_i]}
+		local is_explicit=${rice_module_explicit[$module_i]}
+		local is_meta=${rice_module_meta[$module_i]}
 		rice::split ':' "$module"
-		local module_name=("${rice_split__output[0]}")
+		local module_name="${rice_split__output[0]}"
 		local module_pattern=("${rice_split__output[@]:1}")
 		rice::split ':' "$pattern"
 		local wanted_pattern=("${rice_split__output[@]}")
 
+		# set flags to default values
+		local is_matching=false
+		local is_selected=false
 
-		if [[ $is_explicit == true && $run_all == false ]]; then
-			rice::info "skipping explicit module module: $module"
-			continue
+		if (( ${#module_pattern[@]} <= ${#wanted_pattern[@]} )); then
+			# only check if pattern matches if module is not top-level
+			# check if module_pattern is a prefix of wanted_pattern
+			is_matching=true
+			for (( i=0; i < ${#module_pattern[@]}; i++ )); do
+				if [[ "${module_pattern[i]}" != "${wanted_pattern[i]}" ]]; then
+					is_matching=false
+					break
+				fi
+			done
 		fi
 
-		if [[ $is_meta == true && $no_meta == true ]]; then
-			rice::info "skipping explicit meta module: $module"
-			continue
+		if (( ${#selected_modules[@]} > 0 )); then
+			# if we only want to run some modules, check if name matches
+			for selected_module in "${selected_modules[@]}"; do
+				if [[ "$is_matching" == true && "$selected_module" == "$module_name" ]]; then
+					is_selected=true
+				fi
+
+				if [[ "$selected_module" == "$module" ]]; then
+					is_selected=true
+				fi
+			done
 		fi
 
-		if (( ${#module_pattern[@]} > 0 && ${#wanted_pattern[@]} == 0 )); then
+		if [[ $is_matching == false ]]; then
 			rice::info "skipping non-matching module: $module"
 			continue
 		fi
 
-		if (( ${#wanted_pattern[@]} > 0 && ${#module_pattern[@]} > 0 )); then
-			# only check if pattern matches if module is not top-level
-			if (( ${#module_pattern[@]} > ${#wanted_pattern[@]} )); then
-				# module_pattern cannot be a prefix of wanted_pattern
-				rice::info "skipping non-matching module: $module"
+		if [[ $is_selected == false ]]; then
+			if (( ${#selected_modules[@]} > 0 )); then
+				rice::info "skipping not selected module: $module"
 				continue
 			fi
 
-
-			# check if module_pattern is a prefix of wanted_pattern
-			local is_prefix=true
-			for (( size=1 ; size <= ${#module_pattern[@]} ; size++ )); do
-				for (( i=0 ; i < size ; i++ )); do
-					if [[ "${module_pattern[i]}" != "${wanted_pattern[i]}" ]]; then
-						is_prefix=false
-					fi
-				done
-			done
-
-			if [[ $is_prefix == false ]]; then
-				rice::info "skipping non-matching module: $module"
+			if [[ $is_explicit == true && $run_all == false ]]; then
+				rice::info "skipping explicit module module: $module"
 				continue
 			fi
-		fi
 
-		if (( ${#explicit_modules[@]} > 0 )); then
-			# if we only want to run some modules, check if name matches
-			local found=false
-			for explicit_module in "${explicit_modules[@]}"; do
-				if [[ "$explicit_module" == "$module" ]]; then
-					found=true
-				fi
-			done
-
-			if [[ $found == false ]]; then
-				rice::info "skipping non-explicit module: $module"
+			if [[ $is_meta == true && $no_meta == true ]]; then
+				rice::info "skipping explicit meta module: $module"
 				continue
 			fi
 		fi
 
 		# we can finally run the module
-		rice::module_run_one "$module"
+		rice::run_one "$module"
 
 		# log our progress
 		rice_run__last_statuses+=($?)
@@ -631,11 +613,6 @@ EOF
 main() {
 	PROGRAM_PATH=$0
 	PROGRAM_NAME=$(basename "$PROGRAM_PATH")
-	if [[ $rice_live_reload == false || ! $rice_initialized ]]; then
-		rice_initialized=true
-		rice::init
-	fi
-
 }
 
 main
