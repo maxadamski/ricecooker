@@ -133,7 +133,7 @@ init_ricepacket__multiple() {
 test__multiple_modules__runs__selected__one_top_level() {
 	init_ricepacket__multiple
 
-	rice::run -m activity_c
+	rice::run activity_c
 
 	expected_ran=(activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -143,7 +143,7 @@ test__multiple_modules__runs__selected__one_top_level() {
 test__multiple_modules__runs__selected__explicit() {
 	init_ricepacket__multiple
 
-	rice::run -m activity_x
+	rice::run activity_x
 
 	expected_ran=(activity_x)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -153,7 +153,7 @@ test__multiple_modules__runs__selected__explicit() {
 test__multiple_modules__runs__selected__multpile_top_level() {
 	init_ricepacket__multiple
 
-	rice::run -m activity_a activity_c
+	rice::run activity_a activity_c
 
 	expected_ran=(activity_a activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -163,7 +163,7 @@ test__multiple_modules__runs__selected__multpile_top_level() {
 test__multiple_modules__runs__selected__pattern() {
 	init_ricepacket__multiple
 
-	rice::run -m activity_c -p variant_a
+	rice::run -p variant_a activity_c 
 
 	expected_ran=(activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -173,7 +173,7 @@ test__multiple_modules__runs__selected__pattern() {
 test__multiple_modules__runs__selected__pattern_layered() {
 	init_ricepacket__multiple
 
-	rice::run -m activity_d -p variant_a
+	rice::run -p variant_a activity_d 
 
 	expected_ran=(activity_d activity_d:variant_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"

@@ -436,7 +436,7 @@ rice::run_all() {
 	return 0
 }
 
-# usage: rice::run [-M] [-m modules...] [-p pattern]
+# usage: rice::run [-M] [-p pattern] [modules...]
 # TODO: refactor this monster
 rice::run() {
 	rice_run__last_statuses=()
@@ -449,42 +449,26 @@ rice::run() {
 
 	# Parse arguments
 
-	local reading_pattern=false
-	local reading_modules=false
-	local reading_list=false
-
-	for argument in "$@"; do
-		local reading_list=false
-
-		case "$argument" in
+	while (( $# > 0 )); do
+		case "$1" in
 			-M|--no-meta)
 				no_meta=true
+				shift
 				;;
 			-a|--all)
 				run_all=true
-				;;
-			-m|--modules)
-				reading_modules=true
-				reading_list=true
+				shift
 				;;
 			-p|--pattern)
-				reading_pattern=true
-				reading_list=true
+				pattern="$2"
+				shift
+				shift
 				;;
 			*)
-				reading_list=true
-				if   [[ $reading_modules == true ]]; then
-					selected_modules+=("$argument")
-				elif [[ $reading_pattern == true ]]; then
-					pattern="$argument"
-				fi
+				selected_modules+=("$1")
+				shift
 				;;
 		esac
-		
-		if [[ $reading_list == false ]]; then
-			reading_pattern=false
-			reading_modules=false
-		fi
 	done
 
 	# Filter & run
@@ -518,11 +502,9 @@ rice::run() {
 		if (( ${#selected_modules[@]} > 0 )); then
 			# if we only want to run some modules, check if name matches
 			for selected_module in "${selected_modules[@]}"; do
-				if [[ "$is_matching" == true && "$selected_module" == "$module_name" ]]; then
-					is_selected=true
-				fi
-
-				if [[ "$selected_module" == "$module" ]]; then
+				if [[ ( "$is_matching" == true \
+					 && "$selected_module" == "$module_name" ) \
+					 || "$selected_module" == "$module" ]]; then
 					is_selected=true
 				fi
 			done
