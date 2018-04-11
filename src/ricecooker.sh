@@ -28,9 +28,9 @@ rice_transaction_in_progress=false
 rice_transaction_failed=false
 rice_transaction_steps=()
 
-#################################
-# Helper functions
-#
+###############################################################################
+# UTILITIES
+###############################################################################
 
 rice::echo() {
 	local echo_level=$1
@@ -92,27 +92,14 @@ rice::split() {
 	unset 'rice_split__output[-1]'
 }
 
-
-#################################
-# Maintenance
-#
-
 rice::init() {
 	rice::debug "Initializing..."
 
 }
 
-#################################
-# Bind
-#
-
-rice::bind() {
-	return 0
-}
-
-#################################
-# Package management
-#
+###############################################################################
+# PACKAGES
+###############################################################################
 
 rice::pkg_install_query_add() {
 	for package in "$@"; do
@@ -158,9 +145,9 @@ rice::pkg() {
 }
 
 
-#################################
-# Transactions
-#
+###############################################################################
+# TRANSACTIONS
+###############################################################################
 
 # Begins a new transaction
 #
@@ -436,7 +423,7 @@ rice::run_all() {
 	return 0
 }
 
-# usage: rice::run [-M] [-p pattern] [modules...]
+# usage: rice::run [-M|-a] [-p pattern] [modules...]
 # TODO: refactor this monster
 rice::run() {
 	rice_run__last_statuses=()
@@ -543,58 +530,91 @@ rice::run() {
 	return 0
 }
 
-#################################
-# User interface
-#
 
-rice::usage() {
-cat <<EOF
+###############################################################################
+# TEMPLATES
+###############################################################################
 
-rice: a do-it-yourself configuration manager
+# usage: template:mustache --src <source_file> --dst <output_file> <hash_file>...
+template:mustache() {
+	local hashes=()
+	local src=''
+	local dst=''
 
-Usage: rice [options] [scripts]*
+	while (( $# > 0 )); do
+		case $1 in
+			--src)
+				src=$(realpath "$2")
+				shift
+				shift
+				;;
+			--dst)
+				dst=$(realpath "$2")
+				shift
+				shift
+				;;
+			*)
+				hashes+=("$(realpath "$1")")
+				shift
+				;;
+		esac
+	done
 
-Examples:
-	# apply modules defined in the ricerc file (rebuild the current configuration)
-	rice -u
-
-	# apply implicit modules in the void/desktop group, excluding the bootstrap module, without asking for permission
-	rice --auto --group void/desktop --exclude bootstrap
-
-	# apply all modules in the void/desktop group, without asking for permission
-	rice -yG void/desktop
-
-	# apply all modules in the void/deskop group, as defined by file /mnt/device/ricefile
-	# after successful exit, save ran groups and modules to RICE_HOME/ricerc
-	rice -sG void/desktop /mnt/device/ricefile
-
-Options:
-	-h --help               Display usage information
-	-V --version            Display version information
-	-y --auto               Non-interactive mode
-	-s --save    [path]     Save the configuration to <path> (defaults to RICE_HOME/ricerc)
-	   --apply              Apply the configuration (default action)
-	   --inverse            Apply the configuration in reverse (only r* commands)
-	-d --dry-run            Do not actually run commands
-	-G           [group]+   Shorthand for --explicit --group
-	-g --group   [group]+   Add given group's modules to the run list
-	-m --modules [module]+  Add given modules to the run list
-	-X --exclude [module]+  Exclude given modules from the run list
-	-c --config  [path]     Add groups and modules specified in the given config file
-	-u --user               Add groups and modules specified in the user's ricerc config file
-	-x --explicit           Run explicit modules in the run list
-
-Scripts:
-	If none are specified, 'ricefile' in RICE_HOME is executed.
-	RICE_DIR defaults to 'HOME/.dotfiles', 'XDG_CONFIG_HOME/dotfiles'.
-
-EOF
+	cat ${hashes[@]} | mustache - "$src" > "$dst"
 }
 
+# usage: template [-m mode] [-l|-L] [-h <hash_file>] <template_file> <output_file>
+template() {
+	local hash=("${TEMPLATE_HASH[@]}")
+	local link=true
+	local mode=''
+	local src=''
+	local dst=''
 
-main() {
-	PROGRAM_PATH=$0
-	PROGRAM_NAME=$(basename "$PROGRAM_PATH")
+	while (( $# > 0 )); do
+		case $1 in
+			-l|--link)
+				link=true
+				shift
+				;;
+			-L|--no-link)
+				link=false
+				shift
+				;;
+			-h|--hash)
+				hash="$2"
+				shift
+				shift
+				;;
+			-m|--mode)
+				mode="$2"
+				shift
+				shift
+				;;
+			*)
+				if [[ $src == '' ]]; then
+					src=$(realpath "$1")
+				elif [[ $dst == '' ]]; then
+					dst=$(realpath "$1")
+				fi
+				shift
+				;;
+		esac
+	done
+
+	local src_file=$(basename "$src")
+	local dst_file=$(basename "$dst")
+	local src_dir=$(dirname "$src")
+	local dst_dir=$(dirname "$dst")
+
+	$TEMPLATE_FUNCTION --src "$src" --dst "$dst" "${hash[@]}"
+
+	if [[ $link == true && ! -f "$dst_dir/$src_file" ]]; then
+		ln -sf "$src" "$dst_dir/$src_file"
+	fi
+
+	if [[ $mode != '' ]]; then
+		chmod "$mode" "$dst"
+	fi
 }
 
-main
