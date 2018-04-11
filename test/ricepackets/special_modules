@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
+rice::add -m meta:system_a
 meta:system_a() {
 	rice::exec true
 }
 
+rice::add -x explicit:system_a
 explicit:system_a() {
 	rice::exec true
 }
 
+rice::add implicit:system_a
 implicit:system_a() {
 	rice::exec true
 }
 
-rice::add -m meta:system_a
-rice::add -x explicit:system_a
-rice::add implicit:system_a

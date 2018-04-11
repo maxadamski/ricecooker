@@ -1,63 +1,62 @@
 #!/usr/bin/env bash
 
+rice::add -m meta:system_a
 meta:system_a() {
 	rice::exec true
 }
 
+rice::add activity_a
 activity_a() {
 	rice::exec true
 }
 
+rice::add activity_a:variant_a
 activity_a:variant_a() {
 	rice::exec true
 }
 
+rice::add activity_a:variant_b
 activity_a:variant_b() {
 	rice::exec true
 }
 
+rice::add activity_b
 activity_b() {
 	rice::exec true
 }
 
+rice::add activity_b:variant_a
 activity_b:variant_a() {
 	rice::exec true
 }
 
+rice::add activity_b:variant_b
 activity_b:variant_b() {
 	rice::exec true
 }
 
+rice::add activity_c
 activity_c() {
 	rice::exec true
 }
 
+rice::add activity_d
 activity_d() {
 	rice::exec true
 }
 
+rice::add activity_d:variant_a
 activity_d:variant_a() {
 	rice::exec true
 }
 
+rice::add -x activity_x
 activity_x() {
 	rice::exec true
 }
 
+rice::add -x activity_y
 activity_y() {
 	rice::exec true
 }
-
-rice::add -m meta:system_a
-rice::add activity_a
-rice::add activity_a:variant_a
-rice::add activity_a:variant_b
-rice::add activity_b
-rice::add activity_b:variant_a
-rice::add activity_b:variant_b
-rice::add activity_c
-rice::add activity_d
-rice::add activity_d:variant_a
-rice::add -x activity_x
-rice::add -x activity_y
 

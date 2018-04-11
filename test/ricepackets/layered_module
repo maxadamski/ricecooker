@@ -62,42 +62,37 @@
 
 # Group 1
 
+rice::add activity
 activity() {
 	rice::exec true
 }
 
 # Group 2
 
+rice::add activity:setup_a
 activity:setup_a() {
 	rice::exec true
 }
 
+rice::add activity:setup_a:machine_a
 activity:setup_a:machine_a() {
 	rice::exec true
 }
 
+rice::add activity:setup_a:machine_b
 activity:setup_a:machine_b() {
 	rice::exec true
 }
 
 # Group 3
 
+rice::add activity:machine_a
 activity:machine_a() {
 	rice::exec true
 }
 
+rice::add activity:machine_a:setup_a
 activity:machine_a:setup_a() {
 	rice::exec true
 }
-
-# Add modules
-
-rice::add activity
-
-rice::add activity:setup_a
-rice::add activity:setup_a:machine_a
-rice::add activity:setup_a:machine_b
-
-rice::add activity:machine_a
-rice::add activity:machine_a:setup_a
 
