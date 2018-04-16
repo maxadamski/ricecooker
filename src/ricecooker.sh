@@ -7,7 +7,6 @@ rice_ansi_yellow=$(tput setaf 3)
 
 # TODO: manage globals in a better way
 
-[[ ! $rice_transaction_break_on_fail ]] && rice_transaction_break_on_fail=true
 [[ ! $rice_live_reload ]] && rice_live_reload=true
 [[ ! $rice_verbosity ]] && rice_verbosity=3
 [[ ! $rice_error ]] && rice_error=1
@@ -282,30 +281,56 @@ rice::rollback_all() {
 }
 
 rice::transaction_step() {
-	if [[ $rice_transaction_break_on_fail == true && $rice_transaction_failed == true ]]; then
-		rice::info "skipping '$*'"
+	local argument_regex="(-n|--no-break|-F|--failable)"
+	local break_on_fail=true
+	local failable=false
+
+	while [[ "$1" =~ $argument_regex && $# -gt 0 ]]; do
+		case "$1" in
+			-n|--no-break)
+				break_on_fail=false
+				shift
+				;;
+			-F|--failable)
+				failable=true
+				shift
+				;;
+			*)
+				shift
+				;;
+		esac
+	done
+
+	local positional=("$@")
+
+	if [[ $break_on_fail == true && $rice_transaction_failed == true ]]; then
+		rice::info "skipping '${positional[*]}'"
 		return 1
 	fi
 
-	rice_transaction_steps+=("$*")
+	rice_transaction_steps+=("${positional[*]}")
+	rice::info "[run] $*"
 
 	if (( rice_verbosity > 0 )); then
-		"$@" >&2
+		"${positional[@]}" >&2
 	else
-		"$@" &> /dev/null
+		"${positional[@]}" &> /dev/null
 	fi
 
 	rice_transaction_step__exit_code="$?"
 
 	if [[ $rice_transaction_step__exit_code != 0 ]]; then
-		if [[ $rice_transaction_in_progress == true ]]; then
-			rice_transaction_failed=true
+		if [[ $failable == false ]]; then
+			if [[ $rice_transaction_in_progress == true ]]; then
+				rice_transaction_failed=true
+			fi
+			rice::error "${positional[*]}"
+			return $rice_transaction_step__exit_code
+		else
+			rice::warning "${positional[*]}"
 		fi
-		rice::error "$*"
-		return $rice_transaction_step__exit_code
 	fi
 
-	rice::info "$*"
 	return 0
 }
 
@@ -498,28 +523,29 @@ rice::run() {
 		fi
 
 		if [[ $is_matching == false ]]; then
-			rice::info "skipping non-matching module: $module"
+			rice::debug "skipping non-matching module: $module"
 			continue
 		fi
 
 		if [[ $is_selected == false ]]; then
 			if (( ${#selected_modules[@]} > 0 )); then
-				rice::info "skipping not selected module: $module"
+				rice::debug "skipping not selected module: $module"
 				continue
 			fi
 
 			if [[ $is_explicit == true && $run_all == false ]]; then
-				rice::info "skipping explicit module module: $module"
+				rice::debug "skipping explicit module module: $module"
 				continue
 			fi
 
 			if [[ $is_meta == true && $no_meta == true ]]; then
-				rice::info "skipping explicit meta module: $module"
+				rice::debug "skipping explicit meta module: $module"
 				continue
 			fi
 		fi
 
 		# we can finally run the module
+		rice::info "[module] $module"
 		rice::run_one "$module"
 
 		# log our progress
