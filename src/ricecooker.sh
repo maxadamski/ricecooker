@@ -20,6 +20,12 @@ rice_module_explicit=()
 unset rice_module_meta
 rice_module_meta=()
 
+unset rice_module_rollback
+rice_module_rollback=()
+
+unset rice_module_rollback
+rice_module_critical=()
+
 rice_pkg_install_query=()
 rice_pkg_remove_query=()
 
@@ -262,6 +268,8 @@ rice::rollback_all() {
 	rice_rollback_all__safe=true
 	rice_rollback_all__errors=()
 
+	rice::info $rice_ansi_red"initiating rollback...$rice_ansi_none"
+
 	for (( i=${#rice_transaction_steps[@]} - 1; i >= 0; i-- )); do
 		if ! rice::rollback_last_removing; then
 			rice_rollback_all__errors=("${rice_transaction_steps[i]}: ${rice_rollback_last__error}")
@@ -281,18 +289,27 @@ rice::rollback_all() {
 }
 
 rice::transaction_step() {
-	local argument_regex="(-n|--no-break|-F|--failable)"
-	local break_on_fail=true
+	local argument_regex="(-q|--quiet|-b|--break-on-fail|-B|--no-break|-F|--failable)"
+	local break_on_fail=false
 	local failable=false
+	local quiet=false
 
 	while [[ "$1" =~ $argument_regex && $# -gt 0 ]]; do
 		case "$1" in
-			-n|--no-break)
+			-b|--break-on-fail)
+				break_on_fail=true
+				shift
+				;;
+			-B|--no-break)
 				break_on_fail=false
 				shift
 				;;
 			-F|--failable)
 				failable=true
+				shift
+				;;
+			-q|--quiet)
+				quiet=true
 				shift
 				;;
 			*)
@@ -303,15 +320,18 @@ rice::transaction_step() {
 
 	local positional=("$@")
 
-	if [[ $break_on_fail == true && $rice_transaction_failed == true ]]; then
+	if [[ $rice_transaction_failed == true ]]; then
 		rice::info "skipping '${positional[*]}'"
 		return 1
 	fi
 
 	rice_transaction_steps+=("${positional[*]}")
-	rice::info "[run] $*"
+	if (( rice_verbosity >= 2 )); then
+		printf "$rice_ansi_green"
+		rice::info "$rice_ansi_none$*"
+	fi
 
-	if (( rice_verbosity > 0 )); then
+	if [[ $rice_verbosity -ge 0 && $quiet == false ]]; then
 		"${positional[@]}" >&2
 	else
 		"${positional[@]}" &> /dev/null
@@ -327,6 +347,7 @@ rice::transaction_step() {
 			rice::error "${positional[*]}"
 			return $rice_transaction_step__exit_code
 		else
+			rice_transaction_step__exit_code="0"
 			rice::warning "${positional[*]}"
 		fi
 	fi
@@ -380,6 +401,8 @@ rice::add() {
 	local modules=()
 	local explicit=false
 	local meta=false
+	local rollback=false
+	local critical=false
 
 	# Parse arguments
 
@@ -390,6 +413,12 @@ rice::add() {
 				;;
 			-m|--meta)
 				meta=true
+				;;
+			-r|--rollback)
+				rollback=true
+				;;
+			-c|--critical)
+				critical=true
 				;;
 			*)
 				modules+=("$argument")
@@ -406,6 +435,7 @@ rice::add() {
 		rice_module_list+=("$module")
 		rice_module_explicit+=("$explicit")
 		rice_module_meta+=("$meta")
+		rice_module_rollback+=("$rollback")
 	done
 
 	return 0
@@ -417,14 +447,23 @@ rice::add() {
 ###############################################################################
 
 rice::run_one() {
+	local rollback=false
+	if [[ $1 == --rollback ]]; then
+		rollback=true
+		shift
+	fi
+
 	local module="$1"
 	rice::transaction_begin
 	"$module"
 	rice_run_one__exit_code="$?"
 	rice::transaction_end
 
-	if [[ "$rice_transaction_failed" == true || "$rice_run_one__exit_code" != 0 ]]; then
-		rice::rollback_all
+	if [[ "$rice_transaction_failed" == true \
+			|| "$rice_run_one__exit_code" != 0 ]]; then
+		if [[ $rollback == true ]]; then
+			rice::rollback_all
+		fi
 		return 1
 	fi
 
@@ -489,6 +528,8 @@ rice::run() {
 		local module=${rice_module_list[$module_i]}
 		local is_explicit=${rice_module_explicit[$module_i]}
 		local is_meta=${rice_module_meta[$module_i]}
+		local is_critical=${rice_module_critical[$module_i]}
+		local rollback=${rice_module_rollback[$module_i]}
 		rice::split ':' "$module"
 		local module_name="${rice_split__output[0]}"
 		local module_pattern=("${rice_split__output[@]:1}")
@@ -544,13 +585,25 @@ rice::run() {
 			fi
 		fi
 
+		# prepare module run options
+		local run_opts=()
+		if [[ $rollback == true ]]; then
+			run_opts+=(--rollback)	
+		fi
+
 		# we can finally run the module
-		rice::info "[module] $module"
-		rice::run_one "$module"
+		rice::info $rice_ansi_yellow"running module '$module'$rice_ansi_none"
+		rice::run_one ${run_opts[@]} "$module"
+		rice_run__last_status=$?
 
 		# log our progress
-		rice_run__last_statuses+=($?)
+		rice_run__last_statuses+=($rice_run__last_status)
 		rice_run__last_modules+=("$module")
+
+		if [[ $is_critical == true && $rice_run__last_status != 0 ]]; then
+			rice::error "Error in a critical module! Cannot continue, aborting..."
+			return 1
+		fi
 	done
 
 	return 0
@@ -564,11 +617,16 @@ rice::run() {
 # usage: template:mustache --src <source_file> --dst <output_file> <hash_file>...
 template:mustache() {
 	local hashes=()
+	local sudo=''
 	local src=''
 	local dst=''
 
 	while (( $# > 0 )); do
 		case $1 in
+			--sudo)
+				sudo=sudo
+				shift
+				;;
 			--src)
 				src=$(realpath "$2")
 				shift
@@ -586,7 +644,7 @@ template:mustache() {
 		esac
 	done
 
-	cat ${hashes[@]} | mustache - "$src" > "$dst"
+	cat ${hashes[@]} | mustache - "$src" | $sudo tee "$dst" > /dev/null
 }
 
 # usage: template [-m mode] [-l|-L] [-h <hash_file>] <template_file> <output_file>
@@ -596,6 +654,8 @@ template() {
 	local mode=''
 	local src=''
 	local dst=''
+	local makedirs=true
+	local sudo=''
 
 	while (( $# > 0 )); do
 		case $1 in
@@ -605,6 +665,14 @@ template() {
 				;;
 			-L|--no-link)
 				link=false
+				shift
+				;;
+			-p)
+				makedirs=true
+				shift
+				;;
+			-P)
+				makedirs=false
 				shift
 				;;
 			-h|--hash)
@@ -617,30 +685,43 @@ template() {
 				shift
 				shift
 				;;
+			--sudo)
+				sudo=sudo
+				shift
+				;;
 			*)
 				if [[ $src == '' ]]; then
-					src=$(realpath "$1")
+					src="$(realpath "$1")"
 				elif [[ $dst == '' ]]; then
-					dst=$(realpath "$1")
+					dst="$1"
 				fi
 				shift
 				;;
 		esac
 	done
 
+	if [[ $makedirs == true ]]; then
+		$sudo mkdir -p "$(dirname "$dst")"
+	fi
+
 	local src_file=$(basename "$src")
 	local dst_file=$(basename "$dst")
 	local src_dir=$(dirname "$src")
 	local dst_dir=$(dirname "$dst")
 
-	$TEMPLATE_FUNCTION --src "$src" --dst "$dst" "${hash[@]}"
+	local template_opts=()
+	if [[ $sudo == sudo ]]; then
+		template_opts+=('--sudo')
+	fi
+
+	$TEMPLATE_FUNCTION ${template_opts[@]} --src "$src" --dst "$dst" "${hash[@]}"
 
 	if [[ $link == true && ! -f "$dst_dir/$src_file" ]]; then
-		ln -sf "$src" "$dst_dir/$src_file"
+		$sudo ln -sf "$src" "$dst_dir/$src_file"
 	fi
 
 	if [[ $mode != '' ]]; then
-		chmod "$mode" "$dst"
+		$sudo chmod "$mode" "$dst"
 	fi
 }
 
