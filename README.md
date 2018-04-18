@@ -138,7 +138,7 @@ Then this would be a visual representation of the module tree:
 ### Running Modules
 
 The `rice::run` command is used to run modules. It accepts a `-p | --pattern` parameter. 
-Patterns are in the following format: `macos:home`, `macos`, `arch:work`
+Examples of patterns: `macos:home`, `macos`, `arch:work`
 
 Sample module:
 
@@ -159,13 +159,14 @@ If a pattern is given, all top-level modules, and matching descendants are run.
 A descendant is matching iff it's pattern is a prefix of the pattern given.
 
 
-#### Run flags
+#### Run options
 
 Besides the pattern flag, `rice::run` accepts other flags:
 
-- `-a` adds all explicit modules, matching pattern, to the run list
-- `-m` runs only given module and it's matching descendants
+- `-a | --all` adds all explicit modules, matching pattern, to the run list
+- `-M | --no-meta` excludess meta-modules from the run list
 
+Remaining positonal arguments are treated as modules, and will be added to the run list.
 
 #### Execution order
 
@@ -176,9 +177,10 @@ Modules are executed in order in which they were added.
 
 Flags can modify module behavior.
 
-- `--meta` modules are always executed
-- `--explicit` modules are run only of requested, or all modules are run
-- If a `--critical` module fails no modules after it are run
+- `-m | --meta` modules are always executed
+- `-x | --explicit` modules are run only of requested, or all modules are run
+- If a `-c | --critical` module fails (see Transactions) no modules after it are run
+- `-r | --rollback` module enables rollback (experimental!)
 
 
 #### Future
@@ -193,10 +195,33 @@ rice::run -p sys_conf:_:home
 
 `rice::run` flags will be changed:
 
-- `-m | --module` will be renamed to `-o | --only` 
 - `-i | --include` will add given modules, and matching descendants to the run list
 - `-x | --explicit` will add all explicit modules, and matching…
 - `-X | --exclude` will remove given modules, and matching…
+
+
+### Transactions
+
+Before running a module Rice Cooker executes `rice::transaction_begin`, which begins a new transaction.
+
+After running a module `rice::transaction_end` is executed.
+
+A module fails iff the transaction failed, or it's exit code was not 0.
+
+If module failed and rollback is enabled, `rice::rollback_all` is executed.
+
+
+#### Executing commands
+
+`rice::exec` is used to run commands in a controlled environment (it's an alias to `rice::transaction_step`).
+
+The following flags can be used:
+- `-F | --failable` transaction doesn't fail if this command fails
+- `-q | --quiet` command output is not printed to stdout
+
+A transaction fails iff a transaction step is not failable, and it's exit code is not 0.
+
+If transaction failed the passed command will not be executed.
 
 
 
