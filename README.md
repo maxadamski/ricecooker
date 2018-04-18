@@ -181,14 +181,14 @@ Flags can modify module behavior.
 - If a `--critical` module fails no modules after it are run
 
 
-#### Near future
+#### Future
 
 The `_` pattern component will match `[A-Za-z]+`:
 
 ```
 # should be easy to implement
-rice::add -x sys_conf:_:arch
-rice::add -x sys_conf:_:home
+rice::run -p sys_conf:_:arch
+rice::run -p sys_conf:_:home
 ```
 
 `rice::run` flags will be changed:
