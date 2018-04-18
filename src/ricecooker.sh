@@ -5,26 +5,15 @@ rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
 rice_ansi_yellow=$(tput setaf 3)
 
-# TODO: manage globals in a better way
+rice_verbosity=3
+rice_error=0
 
-[[ ! $rice_live_reload ]] && rice_live_reload=true
-[[ ! $rice_verbosity ]] && rice_verbosity=3
-[[ ! $rice_error ]] && rice_error=1
-
-unset rice_module_list
 rice_module_list=()
-
-unset rice_module_explicit
 rice_module_explicit=()
-
-unset rice_module_meta
 rice_module_meta=()
-
-unset rice_module_rollback
 rice_module_rollback=()
-
-unset rice_module_rollback
 rice_module_critical=()
+rice_module_dummy=()
 
 rice_pkg_install_query=()
 rice_pkg_remove_query=()
@@ -32,6 +21,9 @@ rice_pkg_remove_query=()
 rice_transaction_in_progress=false
 rice_transaction_failed=false
 rice_transaction_steps=()
+
+rice_template_function="rice::template_mustache"
+
 
 ###############################################################################
 # UTILITIES
@@ -289,66 +281,79 @@ rice::rollback_all() {
 }
 
 rice::transaction_step() {
-	local argument_regex="(-q|--quiet|-b|--break-on-fail|-B|--no-break|-F|--failable)"
-	local break_on_fail=false
+	local flag="(-q|--quiet|-d|--dummy|-f|--failable|-c|--code)"
+	local dummy=$_current_module_dummy
 	local failable=false
 	local quiet=false
+	local success_codes=(0)
 
-	while [[ "$1" =~ $argument_regex && $# -gt 0 ]]; do
+	while [[ "$1" =~ $flag && $# -gt 0 ]]; do
 		case "$1" in
-			-b|--break-on-fail)
-				break_on_fail=true
+		-f|--failable)
+			failable=true
+			shift;;
+		-q|--quiet)
+			quiet=true
+			shift;;
+		-d|--dummy)
+			dummy=true
+			shift;;
+		-c|--code)
+			shift
+			while [[ "$1" =~ [0-9]+ ]]; do
+				success_codes+=("$1")
 				shift
-				;;
-			-B|--no-break)
-				break_on_fail=false
-				shift
-				;;
-			-F|--failable)
-				failable=true
-				shift
-				;;
-			-q|--quiet)
-				quiet=true
-				shift
-				;;
-			*)
-				shift
-				;;
+			done
+			;;
+		*)
+			shift;;
 		esac
 	done
 
-	local positional=("$@")
+	# skip command if transaction failed
 
 	if [[ $rice_transaction_failed == true ]]; then
-		rice::info "skipping '${positional[*]}'"
+		rice::info "skipping '$*'"
 		return 1
 	fi
 
-	rice_transaction_steps+=("${positional[*]}")
+
+	rice_transaction_steps+=("$*")
 	if (( rice_verbosity >= 2 )); then
-		printf "$rice_ansi_green"
-		rice::info "$rice_ansi_none$*"
+		echo "$rice_ansi_green"rice: "$*""$rice_ansi_none"
+	fi
+
+	if [[ $dummy == true ]]; then
+		rice_transaction_step__exit_code="0"
+		return 0	
 	fi
 
 	if [[ $rice_verbosity -ge 0 && $quiet == false ]]; then
-		"${positional[@]}" >&2
+		"$@" >&2
 	else
-		"${positional[@]}" &> /dev/null
+		"$@" &> /dev/null
 	fi
 
 	rice_transaction_step__exit_code="$?"
 
-	if [[ $rice_transaction_step__exit_code != 0 ]]; then
+	local step_success=false
+	for success_code in "${success_codes[@]}"; do
+		if [[ "$rice_transaction_step__exit_code" == "$success_code" ]]; then
+			rice_transaction_step__exit_code=0
+			step_success=true
+		fi
+	done
+
+	if [[ $step_success == false ]]; then
 		if [[ $failable == false ]]; then
 			if [[ $rice_transaction_in_progress == true ]]; then
 				rice_transaction_failed=true
 			fi
-			rice::error "${positional[*]}"
+			rice::error "$*"
 			return $rice_transaction_step__exit_code
 		else
-			rice_transaction_step__exit_code="0"
-			rice::warning "${positional[*]}"
+			rice_transaction_step__exit_code=0
+			rice::warning "$*"
 		fi
 	fi
 
@@ -398,47 +403,59 @@ rice::module_loaded() {
 }
 
 rice::add() {
+	local exit_code=0
 	local modules=()
 	local explicit=false
 	local meta=false
 	local rollback=false
 	local critical=false
+	local dummy=false
+	local force=false
 
-	# Parse arguments
-
-	for argument in "$@"; do
-		case "$argument" in
-			-x|--explicit)
-				explicit=true
-				;;
-			-m|--meta)
-				meta=true
-				;;
-			-r|--rollback)
-				rollback=true
-				;;
-			-c|--critical)
-				critical=true
-				;;
-			*)
-				modules+=("$argument")
-				;;
+	while (( $# > 0 )); do
+		case "$1" in
+		-x|--explicit)
+			explicit=true
+			shift;;
+		-m|--meta)
+			meta=true
+			shift;;
+		-r|--rollback)
+			rollback=true
+			shift;;
+		-c|--critical)
+			critical=true
+			shift;;
+		-d|--dummy)
+			dummy=true
+			shift;;
+		-f|--force)
+			force=true
+			shift;;
+		*)
+			modules+=("$1")
+			shift;;
 		esac
 	done
 
-	# Save module
-
 	for module in "${modules[@]}"; do
 		if rice::module_loaded "$module"; then
-			rice::error "Module '$module' is already loaded. This might override previous module options."
+			if [[ $force == false ]]; then
+				rice::error "Module '$module' is already loaded. It will be run more than once!"
+				exit_code=1
+				continue
+			fi
 		fi
 		rice_module_list+=("$module")
+		# set module properties
 		rice_module_explicit+=("$explicit")
 		rice_module_meta+=("$meta")
 		rice_module_rollback+=("$rollback")
+		rice_module_dummy+=("$dummy")
+		rice_module_critical+=("$critical")
 	done
 
-	return 0
+	return $exit_code
 }
 
 
@@ -447,12 +464,6 @@ rice::add() {
 ###############################################################################
 
 rice::run_one() {
-	local rollback=false
-	if [[ $1 == --rollback ]]; then
-		rollback=true
-		shift
-	fi
-
 	local module="$1"
 	rice::transaction_begin
 	"$module"
@@ -461,7 +472,7 @@ rice::run_one() {
 
 	if [[ "$rice_transaction_failed" == true \
 			|| "$rice_run_one__exit_code" != 0 ]]; then
-		if [[ $rollback == true ]]; then
+		if [[ $_current_module_rollback == true ]]; then
 			rice::rollback_all
 		fi
 		return 1
@@ -526,10 +537,12 @@ rice::run() {
 
 	for (( module_i=0; module_i < ${#rice_module_list[@]}; module_i++ )); do
 		local module=${rice_module_list[$module_i]}
-		local is_explicit=${rice_module_explicit[$module_i]}
-		local is_meta=${rice_module_meta[$module_i]}
-		local is_critical=${rice_module_critical[$module_i]}
-		local rollback=${rice_module_rollback[$module_i]}
+		_current_module_explicit=${rice_module_explicit[$module_i]}
+		_current_module_meta=${rice_module_meta[$module_i]}
+		_current_module_critical=${rice_module_critical[$module_i]}
+		_current_module_dummy=${rice_module_dummy[$module_i]}
+		_current_module_rollback=${rice_module_rollback[$module_i]}
+
 		rice::split ':' "$module"
 		local module_name="${rice_split__output[0]}"
 		local module_pattern=("${rice_split__output[@]:1}")
@@ -556,8 +569,8 @@ rice::run() {
 			# if we only want to run some modules, check if name matches
 			for selected_module in "${selected_modules[@]}"; do
 				if [[ ( "$is_matching" == true \
-					 && "$selected_module" == "$module_name" ) \
-					 || "$selected_module" == "$module" ]]; then
+						&& "$selected_module" == "$module_name" ) \
+						|| "$selected_module" == "$module" ]]; then
 					is_selected=true
 				fi
 			done
@@ -574,33 +587,30 @@ rice::run() {
 				continue
 			fi
 
-			if [[ $is_explicit == true && $run_all == false ]]; then
+			if [[ $_current_module_explicit == true \
+					&& $run_all == false ]]; then
 				rice::debug "skipping explicit module module: $module"
 				continue
 			fi
 
-			if [[ $is_meta == true && $no_meta == true ]]; then
+			if [[ $_current_module_meta == true \
+					&& $no_meta == true ]]; then
 				rice::debug "skipping explicit meta module: $module"
 				continue
 			fi
 		fi
 
-		# prepare module run options
-		local run_opts=()
-		if [[ $rollback == true ]]; then
-			run_opts+=(--rollback)	
-		fi
-
 		# we can finally run the module
 		rice::info $rice_ansi_yellow"running module '$module'$rice_ansi_none"
-		rice::run_one ${run_opts[@]} "$module"
+		rice::run_one "$module"
 		rice_run__last_status=$?
 
 		# log our progress
 		rice_run__last_statuses+=($rice_run__last_status)
 		rice_run__last_modules+=("$module")
 
-		if [[ $is_critical == true && $rice_run__last_status != 0 ]]; then
+		if [[ $_current_module_critical == true \
+				&& $rice_run__last_status != 0 ]]; then
 			rice::error "Error in a critical module! Cannot continue, aborting..."
 			return 1
 		fi
@@ -614,8 +624,8 @@ rice::run() {
 # TEMPLATES
 ###############################################################################
 
-# usage: template:mustache --src <source_file> --dst <output_file> <hash_file>...
-template:mustache() {
+# usage: rice::template_mustache --src <source_file> --dst <output_file> --hash <hash_file>...
+rice::template_mustache() {
 	local hashes=()
 	local sudo=''
 	local src=''
@@ -623,82 +633,67 @@ template:mustache() {
 
 	while (( $# > 0 )); do
 		case $1 in
-			--sudo)
-				sudo=sudo
-				shift
-				;;
-			--src)
-				src=$(realpath "$2")
-				shift
-				shift
-				;;
-			--dst)
-				dst=$(realpath "$2")
-				shift
-				shift
-				;;
-			*)
-				hashes+=("$(realpath "$1")")
-				shift
-				;;
+		--hash)
+			hashes+=("$(realpath "$2")")
+			shift 2;;
+		--src)
+			src=$(realpath "$2")
+			shift 2;;
+		--dst)
+			dst=$(realpath "$2")
+			shift 2;;
+		--sudo)
+			sudo=sudo
+			shift;;
 		esac
 	done
 
-	cat ${hashes[@]} | mustache - "$src" | $sudo tee "$dst" > /dev/null
+	cat "${hashes[@]}" | mustache - "$src" | $sudo tee "$dst" > /dev/null
 }
 
-# usage: template [-m mode] [-l|-L] [-h <hash_file>] <template_file> <output_file>
-template() {
-	local hash=("${TEMPLATE_HASH[@]}")
+# usage: rice::template [-m <mode>] [-L] [-l <link_path>] [-h <hash_file>] <template_file> <output_file>
+rice::template() {
+	local hashes=("${TEMPLATE_HASH[@]}")
+	local makedirs=true
+	local link_path=''
 	local link=true
 	local mode=''
 	local src=''
 	local dst=''
-	local makedirs=true
 	local sudo=''
 
-	while (( $# > 0 )); do
+	while (( $# > 2 )); do
 		case $1 in
-			-l|--link)
-				link=true
-				shift
-				;;
-			-L|--no-link)
-				link=false
-				shift
-				;;
-			-p)
-				makedirs=true
-				shift
-				;;
-			-P)
-				makedirs=false
-				shift
-				;;
-			-h|--hash)
-				hash="$2"
-				shift
-				shift
-				;;
-			-m|--mode)
-				mode="$2"
-				shift
-				shift
-				;;
-			--sudo)
-				sudo=sudo
-				shift
-				;;
-			*)
-				if [[ $src == '' ]]; then
-					src="$(realpath "$1")"
-				elif [[ $dst == '' ]]; then
-					dst="$1"
-				fi
-				shift
-				;;
+		-L|--no-link)
+			link=false
+			shift;;
+		-p)
+			makedirs=true
+			shift;;
+		-P)
+			makedirs=false
+			shift
+			;;
+		-l|--link)
+			link_path="$(realpath "$2")"
+			link=true
+			shift 2;;
+		-h|--hash)
+			hashes+=("$2")
+			shift 2;;
+		-m|--mode)
+			mode="$2"
+			shift 2;;
+		--sudo)
+			sudo=sudo
+			shift;;
+		*)
+			shift;;
 		esac
 	done
+
+	src="$(realpath "$1")"
+	dst="$2"
 
 	if [[ $makedirs == true ]]; then
 		$sudo mkdir -p "$(dirname "$dst")"
@@ -709,15 +704,22 @@ template() {
 	local src_dir=$(dirname "$src")
 	local dst_dir=$(dirname "$dst")
 
-	local template_opts=()
+	local template_opts=(--src "$src" --dst "$dst")
 	if [[ $sudo == sudo ]]; then
 		template_opts+=('--sudo')
 	fi
+	for hash in "${hashes[@]}"; do
+		template_opts+=(--hash "$hash")
+	done
 
-	$TEMPLATE_FUNCTION ${template_opts[@]} --src "$src" --dst "$dst" "${hash[@]}"
+	$rice_template_function "${template_opts[@]}"
 
-	if [[ $link == true && ! -f "$dst_dir/$src_file" ]]; then
-		$sudo ln -sf "$src" "$dst_dir/$src_file"
+	if [[ $link == true && $link_path == '' ]]; then
+		link_path="$dst_dir/$src_file"
+	fi
+
+	if [[ $link == true && ! -f "$link_path"  ]]; then
+		$sudo ln -sf "$src" "$link_path"
 	fi
 
 	if [[ $mode != '' ]]; then
