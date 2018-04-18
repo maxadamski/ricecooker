@@ -1,6 +1,8 @@
 # Rice Cooker 🍚
 
-Work in progress.
+Rice Cooker is a bash configuration management framework. It allows you to abstract out the control flow of arbitrary blocks of code (here called modules), with a hierarchical approach. This makes multi-system configurations easier to manage and modify. Reapplying the configuration is also improved because of that. For example, if you only change fonts or colors, there is no need to copy other system configuration - you only run modules related to the look and feel. Being just a bash script, Rice Cooker can be sourced in your shell (assuming bash or zsh) for rapid configuration development.
+
+The philosophy of Rice Cooker is to give the user full control over their scripts. Only module names are "convention over configuration", everything else is done explicitly, although without needless verbosity. By passing your commands to `rice::exec` (or a shorter alias of choice) control over code execution in modules is given, and features like transactions and extensive logging are made possible. This is of course opt-in, so only the features you find useful may be picked. Common operations like templating are also provided to automate the boring stuff, with more features planned for the future.
 
 
 
@@ -17,12 +19,14 @@ Work in progress.
 
 
 
-## Future features
+## Future features (sorted by priority)
 
-- [ ] Abstract the distribution details (like package management)
-- [ ] Each module opens a transaction, which can be audited or rolled back before committing
 - [ ] Easy-to-use CLI utility for managing and applying configurations
-- [ ] Convenient functions for automating the boring stuff
+- [ ] More control over module execution
+- [ ] Convenient functions for automating the boring stuff (symlinks, comparing files before copying…)
+- [ ] Each module opens a transaction, which can be audited or rolled back before committing
+- [ ] Generate nice reports
+- [ ] Abstract the distribution details (like package management)
 
 
 
@@ -81,101 +85,136 @@ You're basically done! Now execute `rice::*` functions like this:
 
 
 
-### Sample single-system configuration:
+## Guide
+
+### Adding Modules
+
+A "module" is just a function with a specific naming scheme. Modules are added to the execution query, with the `rice::add` command.
+
+
+#### Structure
+
+Modules form a hierarchy. Let's say if we executed the following commands:
 
 ```sh
-#!/usr/bin/env bash
+# Module flags:
+#   -m | --meta
+#   -x | --explicit
+#   -c | --critical
 
-# 0. make ricecooker less talkative by setting this to a lower value,
-#      also set other global variables here
+rice::add -m -c meta:arch
+rice::add -m -c meta:macos
 
-rice_verbosity=2
+rice::add -x sys_conf
+rice::add -x sys_conf:arch
+rice::add -x sys_conf:macos
+rice::add -x sys_conf:macos:work
+rice::add -x sys_conf:macos:home
 
-# 1. register the module as a meta module
+rice::add usr_conf
+rice::add usr_conf:arch
+rice::add usr_conf:macos
+rice::add usr_conf:macos:work
 
-rice::add meta:ubuntu --meta
-
-# 2. say what it does
-
-meta:ubuntu() {
-  # maybe set some useful variables
-  CURRENT_SYSTEM=ubuntu
-  # do ubuntu-specific things
-}
-
-# 3. declare another module. This one is only run when it's explicitly told to!
-
-rice::add packages:ubuntu --explicit
-packages:ubuntu() {
-  # Personally, I like to alias `rice::exec` to something shorter
-  rice::exec sudo apt update
-  rice::exec sudo apt install neovim ranger
-}
-
-# 4. You can execute additional commands depending on your needs
-
-rice::add packages:ubuntu:desktop --explicit
-packages:ubuntu:desktop() {
-  # A failable command doesn't return from module on failure
-  # A command fails if it's return value is not 0
-  rice::exec --failable sudo apt install big_office_suite
-}
-
-# 5. If `ubuntu:laptop` pattern is given, 
-#      this module is run instead of `packages:ubuntu:desktop`
-
-rice::add packages:ubuntu:laptop --explicit
-packages:ubuntu:laptop() {
-  rice::exec sudo apt install lightweight_terminal_spreadsheet
-}
-
-# 6. We can't continue configuring our system, 
-#      unless every (non-failable) command in this module succeeds
-
-rice::add security:ubuntu --critical
-security:ubuntu() {
-  rice::exec 'copy firewall config files'
-  rice::exec 'start the firewall service'
-  # In critical modules, failable commands can still fail
-  #   without interrupting execution
-  rice::exec --failable false
-  rice::exec echo 'will still be executed'
-}
-
-# 7. A top-level module is pattern agnostic
-
-rice::add keychain
-keychain() {
-  # module returns early if the `keys` directory is not found
-  rice::exec test -d keys
-  # copy a key and change it's permissions
-  rice::exec cp keys/id_rsa ~/.ssh/id_rsa
-  rice::exec chmod 600 ~/.ssh/id_rsa
-  # commands not starting with `rice::exec` will always execute,
-  #   as they're not controlled by ricecooker
-  echo 'keys or not, this will be printed!'
-}
+rice::add -x keys
+rice::add -x keys:macos:work
 ```
+
+Then this would be a visual representation of the module tree:
+
+```
+                                (tree_root)
+                                     |
+          .----------------+---------+--------------+-------------.
+         /                 |                        |              \
+   .-(meta)-.        .-(sys_conf)-.            .-(usr_conf)-.    (keys)-.
+  /          \      /              \          /              \           \
+(arch)   (macos) (arch)       .-(macos)-.  (arch)       .-(macos)   (macos:work)
+                             /           \             /
+                          (work)       (home)       (work)
+```
+
+
+### Running Modules
+
+The `rice::run` command is used to run modules. It accepts a `-p | --pattern` parameter. 
+Patterns are in the following format: `macos:home`, `macos`, `arch:work`
+
+Sample module:
+
+```
+ module_name   module_pattern
+      |             /
+   .--+--.   .-----+-.
+   |      \ /        |
+   sys_conf:macos:work() {
+     …
+   }
+```
+
+If no pattern is given, only modules directly connected to the tree root (top-level modules) are run.
+
+If a pattern is given, all top-level modules, and matching descendants are run.
+
+A descendant is matching iff it's pattern is a prefix of the pattern given.
+
+
+#### Run flags
+
+Besides the pattern flag, `rice::run` accepts other flags:
+
+- `-a` adds all explicit modules, matching pattern, to the run list
+- `-m` runs only given module and it's matching descendants
+
+
+#### Execution order
+
+Modules are executed in order in which they were added.
+
+
+#### Module flags
+
+Flags can modify module behavior.
+
+- `--meta` modules are always executed
+- `--explicit` modules are run only of requested, or all modules are run
+- If a `--critical` module fails no modules after it are run
+
+
+#### Near future
+
+The `_` pattern component will match `[A-Za-z]+`:
+
+```
+# should be easy to implement
+rice::add -x sys_conf:_:arch
+rice::add -x sys_conf:_:home
+```
+
+`rice::run` flags will be changed:
+
+- `-m | --module` will be renamed to `-o | --only` 
+- `-i | --include` will add given modules, and matching descendants to the run list
+- `-x | --explicit` will add all explicit modules, and matching…
+- `-X | --exclude` will remove given modules, and matching…
+
 
 
 ## Examples
 
-See files in `test/ricepackets` to see how modules work.
+Sample configuration are inside the `examples` directory.
 
-Check out my [dotfiles](https://github.com/maxadamski/dotfiles) for real world usage.
+See files in `test` to see how things work.
+
+Also check out my [dotfiles](https://github.com/maxadamski/dotfiles) for real world usage.
 
 
 ## Requirements
 
-- bash
+- bash >= 4
 
 Optional:
 - make (to easily run unit tests)
 - kcov (to generate coverage reports)
 - ruby (for built-in template support)
-
-
-## Caveats
-
-Only some commands can be rolled back, although it is possible implement the inverse of arbitrary commands, making them compatible.
 

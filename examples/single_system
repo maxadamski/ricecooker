@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+# 0. make ricecooker less talkative by setting this to a lower value,
+#      also set other global variables here
+
+rice_verbosity=2
+
+# 1. register the module as a meta module
+
+rice::add meta:ubuntu --meta
+
+# 2. say what it does
+
+meta:ubuntu() {
+  # maybe set some useful variables
+  CURRENT_SYSTEM=ubuntu
+  # do ubuntu-specific things
+}
+
+# 3. declare another module. This one is only run when it's explicitly told to!
+
+rice::add packages:ubuntu --explicit
+packages:ubuntu() {
+  # Personally, I like to alias `rice::exec` to something shorter
+  rice::exec sudo apt update
+  rice::exec sudo apt install neovim ranger
+}
+
+# 4. You can execute additional commands depending on your needs
+
+rice::add packages:ubuntu:desktop --explicit
+packages:ubuntu:desktop() {
+  # A failable command doesn't return from module on failure
+  # A command fails if it's return value is not 0
+  rice::exec --failable sudo apt install big_office_suite
+}
+
+# 5. If `ubuntu:laptop` pattern is given, 
+#      this module is run instead of `packages:ubuntu:desktop`
+
+rice::add packages:ubuntu:laptop --explicit
+packages:ubuntu:laptop() {
+  rice::exec sudo apt install lightweight_terminal_spreadsheet
+}
+
+# 6. We can't continue configuring our system, 
+#      unless every (non-failable) command in this module succeeds
+
+rice::add security:ubuntu --critical
+security:ubuntu() {
+  rice::exec 'copy firewall config files'
+  rice::exec 'start the firewall service'
+  # In critical modules, failable commands can still fail
+  #   without interrupting execution
+  rice::exec --failable false
+  rice::exec echo 'will still be executed'
+}
+
+# 7. A top-level module is pattern agnostic
+
+rice::add keychain
+keychain() {
+  # module returns early if the `keys` directory is not found
+  rice::exec test -d keys
+  # copy a key and change it's permissions
+  rice::exec cp keys/id_rsa ~/.ssh/id_rsa
+  rice::exec chmod 600 ~/.ssh/id_rsa
+  # commands not starting with `rice::exec` will always execute,
+  #   as they're not controlled by ricecooker
+  echo 'keys or not, this will be printed!'
+}
+
