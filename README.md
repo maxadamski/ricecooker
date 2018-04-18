@@ -32,7 +32,7 @@ Work in progress.
 
 #### 1. Create configuration directory
 
-First you have to download `ricecooker`, and place it in your configuration directory.
+First you have to download ricecooker, and place it in your configuration directory.
 
 ```sh
 mkdir dotfiles
@@ -43,49 +43,40 @@ git clone https://github.com/maxadamski/ricecooker .ricecooker
 ```
 
 
-#### 2. Write a launcher script
+#### 2. Create a ricefile
 
-Then you should to create a launcher script. It file will allow you to pass commands to the ricecooker framework without sourcing it in your shell.
+Now create your configuration file.
 
-Simple launcher `dotfiles/configure`:
+`dotfiles/ricefile`:
 ```sh
 #!/usr/bin/env bash
+
+# 1. Source the `ricecooker` framework
 . .ricecooker/src/ricecooker.sh
-. ricefile
-$@
-```
 
-
-#### 3. Write a ricefile
-
-You can now create your configuration file. It's sourced in the launcher after ricecooker, and before your command.
-
-Simple ricefile `dotfiles/ricefile`:
-```sh
-#!/usr/bin/env bash
+# 2. Declare and add a module
 rice::add hello_world
 hello_world() {
   rice::exec echo "Hello, World!"
 }
+
+# 3. Pass cli arguments
+$@
 ```
 
-
-#### 4. Set correct permissions
-
-Both the launcher and the configuration script require execute permissions.
+The configuration script requires execute permissions.
 
 ```sh
-chmod +x configure
 chmod +x ricefile
 ```
 
 
-#### 5. Run modules
+#### 3. Run modules
 
-After creating a `ricefile` you're basically done! Now execute `rice::*` functions like this:
+You're basically done! Now execute `rice::*` functions like this:
 
 ```sh
-./configure rice::run --module hello_world
+./ricefile rice::run --module hello_world
 ```
 
 
@@ -95,7 +86,8 @@ After creating a `ricefile` you're basically done! Now execute `rice::*` functio
 ```sh
 #!/usr/bin/env bash
 
-# 0. make ricecooker less talkative by setting this to a lower value, also set other global variables here
+# 0. make ricecooker less talkative by setting this to a lower value,
+#      also set other global variables here
 
 rice_verbosity=2
 
@@ -129,20 +121,23 @@ packages:ubuntu:desktop() {
   rice::exec --failable sudo apt install big_office_suite
 }
 
-# 5. If `ubuntu:laptop` pattern is given, this module is run instead of `packages:ubuntu:desktop`
+# 5. If `ubuntu:laptop` pattern is given, 
+#      this module is run instead of `packages:ubuntu:desktop`
 
 rice::add packages:ubuntu:laptop --explicit
 packages:ubuntu:laptop() {
   rice::exec sudo apt install lightweight_terminal_spreadsheet
 }
 
-# 6. We can't continue configuring our system, unless every (non-failable) command in this module succeeds
+# 6. We can't continue configuring our system, 
+#      unless every (non-failable) command in this module succeeds
 
 rice::add security:ubuntu --critical
 security:ubuntu() {
   rice::exec 'copy firewall config files'
   rice::exec 'start the firewall service'
-  # In critical modules, failable commands can still fail without interrupting execution
+  # In critical modules, failable commands can still fail
+  #   without interrupting execution
   rice::exec --failable false
   rice::exec echo 'will still be executed'
 }
@@ -156,7 +151,8 @@ keychain() {
   # copy a key and change it's permissions
   rice::exec cp keys/id_rsa ~/.ssh/id_rsa
   rice::exec chmod 600 ~/.ssh/id_rsa
-  # commands not starting with `rice::exec` will always execute, as they're not controlled by ricecooker
+  # commands not starting with `rice::exec` will always execute,
+  #   as they're not controlled by ricecooker
   echo 'keys or not, this will be printed!'
 }
 ```
