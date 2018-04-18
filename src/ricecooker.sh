@@ -23,6 +23,7 @@ rice_transaction_failed=false
 rice_transaction_steps=()
 
 rice_template_function="rice::template_mustache"
+rice_template_hashes=()
 
 
 ###############################################################################
@@ -320,7 +321,7 @@ rice::transaction_step() {
 
 	rice_transaction_steps+=("$*")
 	if (( rice_verbosity >= 2 )); then
-		echo "$rice_ansi_green"rice: "$*""$rice_ansi_none"
+		echo "$rice_ansi_green"rice: "$rice_ansi_none""$*"
 	fi
 
 	if [[ $dummy == true ]]; then
@@ -513,23 +514,18 @@ rice::run() {
 
 	while (( $# > 0 )); do
 		case "$1" in
-			-M|--no-meta)
-				no_meta=true
-				shift
-				;;
-			-a|--all)
-				run_all=true
-				shift
-				;;
-			-p|--pattern)
-				pattern="$2"
-				shift
-				shift
-				;;
-			*)
-				selected_modules+=("$1")
-				shift
-				;;
+		-M|--no-meta)
+			no_meta=true
+			shift;;
+		-a|--all)
+			run_all=true
+			shift;;
+		-p|--pattern)
+			pattern="$2"
+			shift 2;;
+		*)
+			selected_modules+=("$1")
+			shift;;
 		esac
 	done
 
@@ -557,7 +553,7 @@ rice::run() {
 			# only check if pattern matches if module is not top-level
 			# check if module_pattern is a prefix of wanted_pattern
 			is_matching=true
-			for (( i=0; i < ${#module_pattern[@]}; i++ )); do
+			for (( i=0 ; i < ${#module_pattern[@]} ; i++ )); do
 				if [[ "${module_pattern[i]}" != "${wanted_pattern[i]}" ]]; then
 					is_matching=false
 					break
@@ -574,6 +570,10 @@ rice::run() {
 					is_selected=true
 				fi
 			done
+		fi
+
+		if [[ $is_matching == true && $_current_module_meta == true ]]; then
+			is_selected=true
 		fi
 
 		if [[ $is_matching == false ]]; then
@@ -648,12 +648,14 @@ rice::template_mustache() {
 		esac
 	done
 
-	cat "${hashes[@]}" | mustache - "$src" | $sudo tee "$dst" > /dev/null
+	rice::debug "cat ${hashes[@]} | mustache - '$src' | $sudo tee '$dst' > /dev/null"
+
+	cat ${hashes[@]} | mustache - "$src" | $sudo tee "$dst" > /dev/null
 }
 
 # usage: rice::template [-m <mode>] [-L] [-l <link_path>] [-h <hash_file>] <template_file> <output_file>
 rice::template() {
-	local hashes=("${TEMPLATE_HASH[@]}")
+	local hashes=("${rice_template_hashes[@]}")
 	local makedirs=true
 	local link_path=''
 	local link=true
@@ -711,6 +713,8 @@ rice::template() {
 	for hash in "${hashes[@]}"; do
 		template_opts+=(--hash "$hash")
 	done
+
+	rice::debug "$rice_template_function ${template_opts[@]}"
 
 	$rice_template_function "${template_opts[@]}"
 

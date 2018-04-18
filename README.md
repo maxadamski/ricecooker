@@ -80,7 +80,7 @@ chmod +x ricefile
 You're basically done! Now execute `rice::*` functions like this:
 
 ```sh
-./ricefile rice::run --module hello_world
+./ricefile rice::run
 ```
 
 
