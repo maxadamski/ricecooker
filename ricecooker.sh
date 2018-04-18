@@ -5,7 +5,7 @@ rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
 rice_ansi_yellow=$(tput setaf 3)
 
-rice_verbosity=3
+rice_verbosity=1
 rice_error=0
 
 rice_module_list=()
@@ -572,7 +572,8 @@ rice::run() {
 			done
 		fi
 
-		if [[ $is_matching == true && $_current_module_meta == true ]]; then
+		if [[ $is_matching == true && $no_meta == false \
+				&& $_current_module_meta == true ]]; then
 			is_selected=true
 		fi
 

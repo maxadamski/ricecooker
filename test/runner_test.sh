@@ -8,7 +8,7 @@ assertModulesSucceded() {
 
 init_ricecooker() {
 	rice_verbosity=1
-	. src/ricecooker.sh
+	. ricecooker.sh
 }
 
 ###############################################################################

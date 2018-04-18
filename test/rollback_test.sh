@@ -24,7 +24,7 @@ init_rollback_last() {
 init_ricecooker() {
 	rice_transaction_steps=()
 	rice_verbosity=0
-	. src/ricecooker.sh
+	. ricecooker.sh
 }
 
 test__rollback_last__without_transaction() {
