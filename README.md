@@ -36,9 +36,7 @@ All features are opt-in, so only ones you find useful may be picked. Common oper
 
 ## Quick Start
 
-### How to make a configuration
-
-#### 1. Create configuration directory
+### 1. Create configuration directory
 
 First you have to download ricecooker, and place it in your configuration directory.
 
@@ -51,7 +49,7 @@ git clone https://github.com/maxadamski/ricecooker .ricecooker
 ```
 
 
-#### 2. Create a ricefile
+### 2. Create a ricefile
 
 Now create your configuration file.
 
@@ -79,7 +77,7 @@ chmod +x ricefile
 ```
 
 
-#### 3. Run modules
+### 3. Run modules
 
 You're basically done! Now execute `rice::*` functions like this:
 
@@ -88,24 +86,44 @@ You're basically done! Now execute `rice::*` functions like this:
 ```
 
 
+## Examples
 
-## Guide
+Sample ricefiles are inside the `examples` directory.
 
-### Adding Modules
+See files in `test` to see how things work in-depth.
 
-A "module" is just a function with a specific naming scheme. Modules are added to the execution query, with the `rice::add` command.
+Also check out my [dotfiles](https://github.com/maxadamski/dotfiles) for real world usage.
 
 
-#### Structure
+## Requirements
+
+- bash >= 4
+
+Optional:
+- make (to easily run unit tests)
+- kcov (to generate coverage reports)
+- ruby (for built-in template support)
+
+
+## Documentation
+
+### Structure
+
+This is a sample module:
+
+```
+module_name   module_pattern
+    |             /
+ .--+--.   .-----+-.
+ |      \ /        |
+ sys_conf:macos:work() {
+   …
+ }
+```
 
 Modules form a hierarchy. Let's say if we executed the following commands:
 
 ```sh
-# Module flags:
-#   -m | --meta
-#   -x | --explicit
-#   -c | --critical
-
 rice::add -m -c meta:arch
 rice::add -m -c meta:macos
 
@@ -129,7 +147,7 @@ Then this would be a visual representation of the module tree:
 ```
                                 (tree_root)
                                      |
-          .----------------+---------+--------------+-------------.
+          .----------------+----(top_level)---------+-------------.
          /                 |                        |              \
    .-(meta)-.        .-(sys_conf)-.            .-(usr_conf)-.    (keys)-.
   /          \      /              \          /              \           \
@@ -137,55 +155,6 @@ Then this would be a visual representation of the module tree:
                              /           \             /
                           (work)       (home)       (work)
 ```
-
-
-### Running Modules
-
-The `rice::run` command is used to run modules. It accepts a `-p | --pattern` parameter. 
-Examples of patterns: `macos:home`, `macos`, `arch:work`
-
-Sample module:
-
-```
- module_name   module_pattern
-      |             /
-   .--+--.   .-----+-.
-   |      \ /        |
-   sys_conf:macos:work() {
-     …
-   }
-```
-
-If no pattern is given, only modules directly connected to the tree root (top-level modules) are run.
-
-If a pattern is given, all top-level modules, and matching descendants are run.
-
-A descendant is matching iff it's pattern is a prefix of the pattern given.
-
-
-#### Run options
-
-Besides the pattern flag, `rice::run` accepts other flags:
-
-- `-a | --all` adds all explicit modules, matching pattern, to the run list
-- `-M | --no-meta` excludess meta-modules from the run list
-
-Remaining positonal arguments are treated as modules, and will be added to the run list.
-
-#### Execution order
-
-Modules are executed in order in which they were added.
-
-
-#### Module flags
-
-Flags can modify module behavior.
-
-- `-m | --meta` modules are always executed
-- `-x | --explicit` modules are run only of requested, or all modules are run
-- If a `-c | --critical` module fails (see Transactions) no modules after it are run
-- `-r | --rollback` module enables rollback (experimental!)
-
 
 #### Future
 
@@ -197,53 +166,131 @@ rice::run -p sys_conf:_:arch
 rice::run -p sys_conf:_:home
 ```
 
-`rice::run` flags will be changed:
 
-- `-i | --include` will add given modules, and matching descendants to the run list
-- `-x | --explicit` will add all explicit modules, and matching…
-- `-X | --exclude` will remove given modules, and matching…
+### Commands
 
+#### rice::add
 
-### Transactions
+```man
+NAME
+  rice::add - add module to the execution queue
 
-Before running a module Rice Cooker executes `rice::transaction_begin`, which begins a new transaction.
+SYNOPSIS
+  rice::add [-m] [-x] [-c] [-r] [MODULE]...
 
-After running a module `rice::transaction_end` is executed.
+DESCRIPTION
+  -m, --meta
+    mark module as 'meta'. Meta modules are always executed by default.
 
-A module fails iff the transaction failed, or it's exit code was not 0.
+  -x, --explicit
+    Mark module as 'explicit'. Explicit modules are only run if explicitly selected with 'rice::run'.
 
-If module failed and rollback is enabled, `rice::rollback_all` is executed.
+  -c, --critical
+    Mark module as 'critical'. When a critical module fails, no modules are run afterwards.
 
+  -r, --rollback
+    Enable (experimental!) rollback feature for given modules
 
-#### Executing commands
+  MODULE
+    A function with a specific naming scheme. Modules are added to the execution queue (FIFO) with `rice::add`.
 
-`rice::exec` is used to run commands in a controlled environment (it's an alias to `rice::transaction_step`).
-
-The following flags can be used:
-- `-F | --failable` transaction doesn't fail if this command fails
-- `-q | --quiet` command output is not printed to stdout
-
-A transaction fails iff a transaction step is not failable, and it's exit code is not 0.
-
-If transaction failed the passed command will not be executed.
-
-
-
-## Examples
-
-Sample configuration are inside the `examples` directory.
-
-See files in `test` to see how things work.
-
-Also check out my [dotfiles](https://github.com/maxadamski/dotfiles) for real world usage.
+EXAMPLES
+  rice::add meta:arch meta:macos
+  rice::add -m -c meta:suse
+```
 
 
-## Requirements
+#### rice::run
 
-- bash >= 4
+```man
+NAME
+  rice::run - run selected modules from the execution queue
 
-Optional:
-- make (to easily run unit tests)
-- kcov (to generate coverage reports)
-- ruby (for built-in template support)
+SYNOPSIS
+  rice::run [-A] [-M] [-I MODULE]... [-X MODULE]... [-o MODULE]... [PATTERN]
+
+DESCRIPTION
+  Modules are executed in order in which they were added.
+
+  -A, --all
+    Run all explicit modules, matching pattern, in the run list.
+
+  -M, --no-meta
+    Do not execute meta-modules.
+
+  -I, --include
+    Run given module, even if it doesn't match
+
+  -X, --exclude
+    Do not execute given module, and it's children.
+
+  -o, --run-only
+    Do not run any module except the one given.
+
+  PATTERN
+    Run top-level modules and matching descendants.
+    A descendant is matching iff it's pattern is a prefix of the given PATTERN.
+    If no pattern is given, only top-level modules are run.
+
+NOTES
+  Before running a module, `rice::transaction_begin` is executed, which begins a new transaction.
+  After running a module, `rice::transaction_end` is executed, which ends the current transaction.
+  If module failed and rollback is enabled, `rice::rollback_all` is executed after when transaction ends.
+  A module fails iff the transaction failed, or module's exit code was not 0.
+  A transaction fails iff a transaction step is not failable, and it's exit code is not 0.
+```
+
+
+#### rice::exec
+
+```man
+NAME
+  rice::exec / rice::transaction_step - execute arbitrary command in a controlled environment
+
+SYNOPSIS
+  rice::exec [-f] [-q] COMMAND
+
+DESCRIPTION
+  -f, --failable
+    Transaction doesn't fail if given this command fails.
+
+  -q, --quiet
+    Command output is not printed to stdout.
+
+NOTES
+  If transaction failed the passed command will not be executed.
+```
+
+
+#### rice::template
+
+```man
+NAME
+  rice::template - compile template files
+
+SYNOPSIS
+  rice::template [-L] [-p] [-P] [-S] [-m MODE] [-t PATH]… [-h HASH]… TEMPLATE OUTPUT
+
+DESCRIPTION
+  A TEMPLATE is compiled using HASHes and the OUTPUT is saved.
+  Optionally TEMPLATE can be symlinked into output's directory
+
+  -t, --link-path PATH
+    Link template file to PATH
+
+  -l, --link-auto (default)
+    Link template file to OUTPUT's parent directory.
+
+  -L, --no-link
+    Do not link template file to OUTPUT's parent directory.
+
+  -h, --hash HASH
+    Add HASH to the hash list.
+
+  -m, --mode MODE
+    Set mode of the OUTPUT file.
+
+  -S, --sudo
+    Run as root.
+```
 
