@@ -506,6 +506,8 @@ rice::run() {
 	rice_run__last_modules=()
 
 	local selected_modules=()
+	local excluded_modules=()
+	local positional=()
 	local pattern=''
 	local run_all=false
 	local no_meta=false
@@ -523,9 +525,15 @@ rice::run() {
 		-p|--pattern)
 			pattern="$2"
 			shift 2;;
+		-X|--exclude)
+			excluded_modules+=("$2")
+			shift 2;;
+		-s|--select)
+			selected_modules+=("$2")
+			shift 2;;
 		*)
-			selected_modules+=("$1")
-			shift;;
+			positional+=("$1")
+			shift 1;;
 		esac
 	done
 
@@ -548,6 +556,7 @@ rice::run() {
 		# set flags to default values
 		local is_matching=false
 		local is_selected=false
+		local is_excluded=false
 
 		if (( ${#module_pattern[@]} <= ${#wanted_pattern[@]} )); then
 			# only check if pattern matches if module is not top-level
@@ -561,15 +570,25 @@ rice::run() {
 			done
 		fi
 
-		if (( ${#selected_modules[@]} > 0 )); then
-			# if we only want to run some modules, check if name matches
-			for selected_module in "${selected_modules[@]}"; do
-				if [[ ( "$is_matching" == true \
-						&& "$selected_module" == "$module_name" ) \
-						|| "$selected_module" == "$module" ]]; then
-					is_selected=true
-				fi
-			done
+		for selected_module in "${selected_modules[@]}"; do
+			if [[ ( $is_matching == true && $module_name == $selected_module ) \
+					|| $module == $selected_module ]]; then
+				is_selected=true
+				break
+			fi
+		done
+
+		for excluded_module in "${excluded_modules[@]}"; do
+			if [[ ( $is_matching == true && $module_name == $excluded_module ) \
+					|| $module ==  $excluded_module ]]; then
+				is_excluded=true
+				break
+			fi
+		done
+
+		if [[ $is_excluded == true ]]; then
+			rice::debug "skipping excluded module: $module"
+			continue
 		fi
 
 		if [[ $is_matching == true && $no_meta == false \

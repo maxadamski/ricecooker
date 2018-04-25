@@ -160,6 +160,16 @@ test__multiple_modules__runs__selected__multpile_top_level() {
 	assertModulesSucceded
 }
 
+test__multiple_modules__runs__excluded__multpile_top_level() {
+	init_ricepacket__multiple
+
+	rice::run -X activity_a activity_c
+
+	expected_ran=(activity_c)
+	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
+	assertModulesSucceded
+}
+
 test__multiple_modules__runs__selected__pattern() {
 	init_ricepacket__multiple
 
