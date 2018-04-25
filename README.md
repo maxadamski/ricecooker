@@ -109,18 +109,6 @@ Optional:
 
 ### Structure
 
-This is a sample module:
-
-```
-module_name   module_pattern
-    |             /
- .--+--.   .-----+-.
- |      \ /        |
- sys_conf:macos:work() {
-   …
- }
-```
-
 Modules form a hierarchy. Let's say if we executed the following commands:
 
 ```sh
@@ -156,16 +144,6 @@ Then this would be a visual representation of the module tree:
                           (work)       (home)       (work)
 ```
 
-#### Future
-
-The `_` pattern component will match `[A-Za-z]+`:
-
-```
-# should be easy to implement
-rice::run -p sys_conf:_:arch
-rice::run -p sys_conf:_:home
-```
-
 
 ### Commands
 
@@ -183,16 +161,37 @@ DESCRIPTION
     mark module as 'meta'. Meta modules are always executed by default.
 
   -x, --explicit
-    Mark module as 'explicit'. Explicit modules are only run if explicitly selected with 'rice::run'.
+    Mark module as 'explicit'. Explicit modules are only run if explicitly
+      selected with 'rice::run'.
 
   -c, --critical
-    Mark module as 'critical'. When a critical module fails, no modules are run afterwards.
+    Mark module as 'critical'. When a critical module fails, no modules 
+      are run afterwards.
 
   -r, --rollback
     Enable (experimental!) rollback feature for given modules
 
-  MODULE
-    A function with a specific naming scheme. Modules are added to the execution queue (FIFO) with `rice::add`.
+  -f, --force
+    Add the module to the execution queue, even if it was already added
+
+  -d, --dummy
+    Add the `-d|--dummy` flag to all `rice::exec` calls in this module
+
+MODULE
+  A function with a specific naming scheme. Modules are added 
+    to the execution queue (FIFO) with `rice::add`.
+
+   M-ATOM       M-PATTERN
+     |             /
+  .--+--.   .-----+-.
+  |      \ /        |
+  sys_conf:macos:work() {
+    …
+  }
+
+  MODULE := M-ATOM | M-ATOM:M-PATTERN
+  M-PATTERN := M-ATOM | M-PATTERN:M-PATTERN
+  M-ATOM := [A-Za-z]+
 
 EXAMPLES
   rice::add meta:arch meta:macos
@@ -207,7 +206,7 @@ NAME
   rice::run - run selected modules from the execution queue
 
 SYNOPSIS
-  rice::run [-A] [-M] [-I MODULE]... [-X MODULE]... [-o MODULE]... [PATTERN]
+  rice::run [-A] [-M] [-i|-I|-x|-X MODULE]... [-o MODULE]... [-s SELECTOR]
 
 DESCRIPTION
   Modules are executed in order in which they were added.
@@ -218,26 +217,52 @@ DESCRIPTION
   -M, --no-meta
     Do not execute meta-modules.
 
-  -I, --include
-    Run given module, even if it doesn't match
+  -i, --include MODULE
+    Run given module
 
-  -X, --exclude
-    Do not execute given module, and it's children.
+  -I, --include-tree MODULE (future)
+    Run given module, and it's children
 
-  -o, --run-only
+  -x, --exclude MODULE
+    Do not run given module
+
+  -X, --exclude-tree MODULE (future)
+    Do not run given module, and it's children
+
+  -o, --only MODULE (future)
     Do not run any module except the one given.
 
-  PATTERN
-    Run top-level modules and matching descendants.
-    A descendant is matching iff it's pattern is a prefix of the given PATTERN.
-    If no pattern is given, only top-level modules are run.
+  -s, --select SELECTOR (default: $RICE_SELECTOR)
+    Run modules only matching the given selector.
+
+SELECTOR
+  SELECTOR := S-PATTERN | ''
+  S-PATTERN := S-ATOM | S-PATTERN:S-PATTERN
+  S-ATOM := [A-Za-z]+ | '_'
+
+  MODULE is matching if it's M-PATTERN matches SELECTOR's S-PATTERN,
+    or MODULE is an M-ATOM and SELECTOR equals ''.
+
+  M-PATTERN is matching if SELECTOR is an S-PATTERN,
+    and M-PATTERN ATOMS are a matching prefix of S-PATTERN ATOMS.
+
+  M-ATOM matches S-ATOM if they are equal or S-ATOM equals '_'.
 
 NOTES
-  Before running a module, `rice::transaction_begin` is executed, which begins a new transaction.
-  After running a module, `rice::transaction_end` is executed, which ends the current transaction.
-  If module failed and rollback is enabled, `rice::rollback_all` is executed after when transaction ends.
-  A module fails iff the transaction failed, or module's exit code was not 0.
-  A transaction fails iff a transaction step is not failable, and it's exit code is not 0.
+  Before running a module, `rice::transaction_begin` is executed,
+    which begins a new transaction.
+
+  After running a module, `rice::transaction_end` is executed,
+    which ends the current transaction.
+
+  If module failed and rollback is enabled, `rice::rollback_all` is executed after
+    the transaction ends.
+
+  A module fails iff the transaction failed,
+    or module's exit code was not 0.
+
+  A transaction fails iff a transaction step is not failable,
+    and it's exit code is not 0.
 ```
 
 
@@ -248,7 +273,7 @@ NAME
   rice::exec / rice::transaction_step - execute arbitrary command in a controlled environment
 
 SYNOPSIS
-  rice::exec [-f] [-q] COMMAND
+  rice::exec [-f] [-q] [-d] [-c CODE...]... COMMAND
 
 DESCRIPTION
   -f, --failable
@@ -256,6 +281,12 @@ DESCRIPTION
 
   -q, --quiet
     Command output is not printed to stdout.
+
+  -d, --dummy
+    Prints command instead of executing it and returns 0.
+
+  -c, --code CODE...
+    Treates given exit CODES as success codes.
 
 NOTES
   If transaction failed the passed command will not be executed.
@@ -269,26 +300,35 @@ NAME
   rice::template - compile template files
 
 SYNOPSIS
-  rice::template [-L] [-p] [-P] [-S] [-m MODE] [-t PATH]… [-h HASH]… TEMPLATE OUTPUT
+  rice::template [-f FUNCTION] [-l PATH] [-L] [-p|-P] [-S] [-m MODE] [-h HASH]... TEMPLATE OUTPUT
 
 DESCRIPTION
   A TEMPLATE is compiled using HASHes and the OUTPUT is saved.
   Optionally TEMPLATE can be symlinked into output's directory
 
-  -t, --link-path PATH
-    Link template file to PATH
+  -l, --symlink PATH (default: "$(dirname OUTPUT)/$(basename TEMPLATE)")
+    Symbolically link template file to PATH
 
-  -l, --link-auto (default)
-    Link template file to OUTPUT's parent directory.
+  -L, --no-symlink
+    Do not symbolically link template file to OUTPUT's parent directory.
 
-  -L, --no-link
-    Do not link template file to OUTPUT's parent directory.
+  -p, --make-dir (default)
+    Create "$(dirname OUTPUT)" if it doesn't exist.
+    
+  -P, --no-make-dir
+    Inverse of -p,--make-dir
 
   -h, --hash HASH
     Add HASH to the hash list.
 
+  -H, --no-global-hash
+    Do not use HASHES from the $RICE_TEMPLATE_HASHES list.
+
   -m, --mode MODE
-    Set mode of the OUTPUT file.
+    Set mode of the OUTPUT file to MODE.
+
+  -f, --function FUNCTION (default: $RICE_TEMPLATE_FUNCTION)
+    Use the following template function
 
   -S, --sudo
     Run as root.

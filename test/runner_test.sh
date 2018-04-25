@@ -45,7 +45,7 @@ test__layered_module__runs__top_level() {
 test__layered_module__runs__setup_a() {
 	init_ricepacket__layered
 
-	rice::run -p setup_a
+	rice::run -s setup_a
 
 	expected_ran=(activity activity:setup_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -55,7 +55,7 @@ test__layered_module__runs__setup_a() {
 test__layered_module__runs__machine_a() {
 	init_ricepacket__layered
 
-	rice::run -p machine_a
+	rice::run -s machine_a
 
 	expected_ran=(activity activity:machine_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -65,7 +65,7 @@ test__layered_module__runs__machine_a() {
 test__layered_module__runs__setup_a_machine_a() {
 	init_ricepacket__layered
 
-	rice::run -p setup_a:machine_a
+	rice::run -s setup_a:machine_a
 
 	expected_ran=(activity activity:setup_a activity:setup_a:machine_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -75,7 +75,7 @@ test__layered_module__runs__setup_a_machine_a() {
 test__layered_module__runs__setup_a_machine_b() {
 	init_ricepacket__layered
 
-	rice::run -p setup_a:machine_b
+	rice::run -s setup_a:machine_b
 
 	expected_ran=(activity activity:setup_a activity:setup_a:machine_b)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -94,7 +94,7 @@ init_ricepacket__special() {
 test__special_modules__runs__implicit() {
 	init_ricepacket__special
 
-	rice::run -p system_a
+	rice::run -s system_a
 
 	expected_ran=(meta:system_a implicit:system_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -104,7 +104,7 @@ test__special_modules__runs__implicit() {
 test__special_modules__runs__no_meta() {
 	init_ricepacket__special
 
-	rice::run --no-meta -p system_a
+	rice::run --no-meta -s system_a
 
 	expected_ran=(implicit:system_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -114,7 +114,7 @@ test__special_modules__runs__no_meta() {
 test__special_modules__runs__all() {
 	init_ricepacket__special
 
-	rice::run --all -p system_a
+	rice::run --all -s system_a
 
 	expected_ran=(meta:system_a explicit:system_a implicit:system_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -133,7 +133,7 @@ init_ricepacket__multiple() {
 test__multiple_modules__runs__selected__one_top_level() {
 	init_ricepacket__multiple
 
-	rice::run activity_c
+	rice::run --include activity_c
 
 	expected_ran=(activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -143,7 +143,7 @@ test__multiple_modules__runs__selected__one_top_level() {
 test__multiple_modules__runs__selected__explicit() {
 	init_ricepacket__multiple
 
-	rice::run activity_x
+	rice::run -i activity_x
 
 	expected_ran=(activity_x)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -153,7 +153,7 @@ test__multiple_modules__runs__selected__explicit() {
 test__multiple_modules__runs__selected__multpile_top_level() {
 	init_ricepacket__multiple
 
-	rice::run activity_a activity_c
+	rice::run -i activity_a -i activity_c
 
 	expected_ran=(activity_a activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -163,7 +163,7 @@ test__multiple_modules__runs__selected__multpile_top_level() {
 test__multiple_modules__runs__excluded__multpile_top_level() {
 	init_ricepacket__multiple
 
-	rice::run -X activity_a activity_c
+	rice::run --exclude activity_a -i activity_c
 
 	expected_ran=(activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -173,7 +173,7 @@ test__multiple_modules__runs__excluded__multpile_top_level() {
 test__multiple_modules__runs__selected__pattern() {
 	init_ricepacket__multiple
 
-	rice::run -p variant_a activity_c 
+	rice::run -s variant_a -i activity_c 
 
 	expected_ran=(activity_c)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
@@ -183,7 +183,7 @@ test__multiple_modules__runs__selected__pattern() {
 test__multiple_modules__runs__selected__pattern_layered() {
 	init_ricepacket__multiple
 
-	rice::run -p variant_a activity_d 
+	rice::run -s variant_a -i activity_d 
 
 	expected_ran=(activity_d activity_d:variant_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"

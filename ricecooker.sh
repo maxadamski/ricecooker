@@ -22,8 +22,8 @@ rice_transaction_in_progress=false
 rice_transaction_failed=false
 rice_transaction_steps=()
 
-rice_template_function="rice::template_mustache"
-rice_template_hashes=()
+export RICE_TEMPLATE_FUNCTION="rice::template_mustache"
+export RICE_TEMPLATE_HASHES=()
 
 
 ###############################################################################
@@ -421,11 +421,11 @@ rice::add() {
 		-m|--meta)
 			meta=true
 			shift;;
-		-r|--rollback)
-			rollback=true
-			shift;;
 		-c|--critical)
 			critical=true
+			shift;;
+		-r|--rollback)
+			rollback=true
 			shift;;
 		-d|--dummy)
 			dummy=true
@@ -507,8 +507,7 @@ rice::run() {
 
 	local selected_modules=()
 	local excluded_modules=()
-	local positional=()
-	local pattern=''
+	local pattern=$RICE_PATTERN
 	local run_all=false
 	local no_meta=false
 
@@ -519,21 +518,20 @@ rice::run() {
 		-M|--no-meta)
 			no_meta=true
 			shift;;
-		-a|--all)
+		-A|--all)
 			run_all=true
 			shift;;
-		-p|--pattern)
-			pattern="$2"
+		-i|--include)
+			selected_modules+=("$2")
 			shift 2;;
-		-X|--exclude)
+		-x|--exclude)
 			excluded_modules+=("$2")
 			shift 2;;
 		-s|--select)
-			selected_modules+=("$2")
+			pattern="$2"
 			shift 2;;
 		*)
-			positional+=("$1")
-			shift 1;;
+			shift;;
 		esac
 	done
 
@@ -644,7 +642,6 @@ rice::run() {
 # TEMPLATES
 ###############################################################################
 
-# usage: rice::template_mustache --src <source_file> --dst <output_file> --hash <hash_file>...
 rice::template_mustache() {
 	local hashes=()
 	local sudo=''
@@ -673,9 +670,10 @@ rice::template_mustache() {
 	cat ${hashes[@]} | mustache - "$src" | $sudo tee "$dst" > /dev/null
 }
 
-# usage: rice::template [-m <mode>] [-L] [-l <link_path>] [-h <hash_file>] <template_file> <output_file>
 rice::template() {
-	local hashes=("${rice_template_hashes[@]}")
+	local global_use=true
+	local hashes=()
+	local function=$RICE_TEMPLATE_FUNCTION
 	local makedirs=true
 	local link_path=''
 	local link=true
@@ -686,33 +684,42 @@ rice::template() {
 
 	while (( $# > 2 )); do
 		case $1 in
-		-L|--no-link)
-			link=false
-			shift;;
-		-p)
-			makedirs=true
-			shift;;
-		-P)
-			makedirs=false
-			shift
-			;;
-		-l|--link)
+		-l|--symlink)
 			link_path="$(realpath "$2")"
 			link=true
 			shift 2;;
+		-L|--no-symlink)
+			link=false
+			shift;;
+		-p|--makedirs)
+			makedirs=true
+			shift;;
+		-P|--no-makedirs)
+			makedirs=false
+			shift;;
 		-h|--hash)
 			hashes+=("$2")
 			shift 2;;
+		-H|--no-global-hash)
+			global_use=false
+			shift;;
 		-m|--mode)
 			mode="$2"
 			shift 2;;
-		--sudo)
+		-f|--function)
+			function="$2"
+			shift 2;;
+		-S|--sudo)
 			sudo=sudo
 			shift;;
 		*)
 			shift;;
 		esac
 	done
+
+	if [[ $global_use == true ]]; then
+		hashes+=("${RICE_TEMPLATE_HASHES[@]}")
+	fi
 
 	src="$(realpath "$1")"
 	dst="$2"
@@ -736,7 +743,7 @@ rice::template() {
 
 	rice::debug "$rice_template_function ${template_opts[@]}"
 
-	$rice_template_function "${template_opts[@]}"
+	$function "${template_opts[@]}"
 
 	if [[ $link == true && $link_path == '' ]]; then
 		link_path="$dst_dir/$src_file"
