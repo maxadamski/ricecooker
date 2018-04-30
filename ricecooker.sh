@@ -418,7 +418,7 @@ rice::add() {
 		-x|--explicit)
 			explicit=true
 			shift;;
-		-m|--meta)
+		-h|--helper)
 			meta=true
 			shift;;
 		-c|--critical)
