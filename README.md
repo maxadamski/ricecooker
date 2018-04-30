@@ -42,10 +42,9 @@ All features are opt-in, so only ones you find useful may be picked. Common oper
 First you have to download ricecooker, and place it in your configuration directory.
 
 ```sh
-mkdir dotfiles; cd dotfiles
-git init
-git clone https://github.com/maxadamski/ricecooker .ricecooker
-# Don't forget to add `.ricecooker/*` to your `.gitignore`
+mkdir dotfiles; cd dotfiles; git init
+curl -sL https://github.com/maxadamski/ricecooker/releases/download/v0.1.0/ricecooker.sh -o ricecooker.sh
+echo ricecooker.sh >> .gitignore
 ```
 
 
@@ -57,8 +56,8 @@ Now create your configuration file.
 ```sh
 #!/usr/bin/env bash
 
-# 1. Source the `ricecooker` framework
-. .ricecooker/ricecooker.sh
+# 1. Source ricecooker
+. ricecooker.sh
 
 # 2. Declare and add a module
 rice::add hello_world
