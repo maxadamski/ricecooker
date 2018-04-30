@@ -16,17 +16,16 @@ All features are opt-in, so only ones you find useful may be picked. Common oper
 - [x] The configuration is a bash file
 - [x] Bootstrap multiple systems using the same configuration
 - [x] Share modules (parts of the configuration) between different systems
-- [x] Run modules in groups, separately or all at once
+- [x] Flexible module execution
 - [x] Use ricecooker functions interactively from bash
 - [x] Use a template engine (mustache by default) to keep your configuration DRY
 - [x] Works great with version control
+- [x] Easy-to-use CLI utility for managing and applying configurations (built into the configuration)
 
 
 
 ## Future features (sorted by priority)
 
-- [ ] Easy-to-use CLI utility for managing and applying configurations
-- [ ] More control over module execution
 - [ ] Convenient functions for automating the boring stuff (symlinks, comparing files before copying…)
 - [ ] Each module opens a transaction, which can be audited or rolled back before committing
 - [ ] Generate nice reports
@@ -41,8 +40,7 @@ All features are opt-in, so only ones you find useful may be picked. Common oper
 First you have to download ricecooker, and place it in your configuration directory.
 
 ```sh
-mkdir dotfiles
-cd dotfiles
+mkdir dotfiles; cd dotfiles
 git init
 git clone https://github.com/maxadamski/ricecooker .ricecooker
 # Don't forget to add `.ricecooker/*` to your `.gitignore`
@@ -82,17 +80,54 @@ chmod +x ricefile
 You're basically done! Now execute `rice::*` functions like this:
 
 ```sh
-./ricefile rice::run
+./ricefile rice::run @
 ```
+
+
+### 4. Optimize your workflow (optional)
+
+You don't have to type `./ricefile rice::run ...` every time you want to rebuild your configuration.
+
+Save yourself precious keystrokes by defining a function like this in the ricefile:
+
+```sh
+rebuild() {
+  # assuming you have these modules added
+  rice::run ${RICE_RUN_PREFIX} system_packages.. system_config.. user_config.. $@
+}
+```
+
+You can alse export the selector for your setup in the shell (hint: use templates to do this), and make an alias to the ricefile.
+
+```sh
+alias rice=~/.dotfiles/ricefile
+export RICE_RUN_PREFIX='-w !@:arch:work'
+# more flexible:
+#{{#rice_selector}}
+#   export RICE_RUN_PREFIX={{rice_run_args}}
+#{{/rice_selector}}
+```
+
+Now you can run common actions effortlessly!
+
+```sh
+rice rebuild
+```
+
+It's still possible to pass additional arguments:
+
+```sh
+rice rebuild -p -system_packages..
+```
+
 
 
 ## Examples
 
 Sample ricefiles are inside the `examples` directory.
 
-See files in `test` to see how things work in-depth.
-
 Also check out my [dotfiles](https://github.com/maxadamski/dotfiles) for real world usage.
+
 
 
 ## Requirements
@@ -105,232 +140,7 @@ Optional:
 - ruby (for built-in template support)
 
 
+
 ## Documentation
 
-### Structure
-
-Modules form a hierarchy. Let's say if we executed the following commands:
-
-```sh
-rice::add -m -c meta:arch
-rice::add -m -c meta:macos
-
-rice::add -x sys_conf
-rice::add -x sys_conf:arch
-rice::add -x sys_conf:macos
-rice::add -x sys_conf:macos:work
-rice::add -x sys_conf:macos:home
-
-rice::add usr_conf
-rice::add usr_conf:arch
-rice::add usr_conf:macos
-rice::add usr_conf:macos:work
-
-rice::add -x keys
-rice::add -x keys:macos:work
-```
-
-Then this would be a visual representation of the module tree:
-
-```
-                                (tree_root)
-                                     |
-          .----------------+----(top_level)---------+-------------.
-         /                 |                        |              \
-   .-(meta)-.        .-(sys_conf)-.            .-(usr_conf)-.    (keys)-.
-  /          \      /              \          /              \           \
-(arch)   (macos) (arch)       .-(macos)-.  (arch)       .-(macos)   (macos:work)
-                             /           \             /
-                          (work)       (home)       (work)
-```
-
-
-### Commands
-
-#### rice::add
-
-```man
-NAME
-  rice::add - add module to the execution queue
-
-SYNOPSIS
-  rice::add [-m] [-x] [-c] [-r] [MODULE]...
-
-DESCRIPTION
-  -m, --meta
-    mark module as 'meta'. Meta modules are always executed by default.
-
-  -x, --explicit
-    Mark module as 'explicit'. Explicit modules are only run if explicitly
-      selected with 'rice::run'.
-
-  -c, --critical
-    Mark module as 'critical'. When a critical module fails, no modules 
-      are run afterwards.
-
-  -r, --rollback
-    Enable (experimental!) rollback feature for given modules
-
-  -f, --force
-    Add the module to the execution queue, even if it was already added
-
-  -d, --dummy
-    Add the `-d|--dummy` flag to all `rice::exec` calls in this module
-
-MODULE
-  A function with a specific naming scheme. Modules are added 
-    to the execution queue (FIFO) with `rice::add`.
-
-   M-ATOM       M-PATTERN
-     |             /
-  .--+--.   .-----+-.
-  |      \ /        |
-  sys_conf:macos:work() {
-    …
-  }
-
-  MODULE := M-ATOM | M-ATOM:M-PATTERN
-  M-PATTERN := M-ATOM | M-PATTERN:M-PATTERN
-  M-ATOM := [A-Za-z]+
-
-EXAMPLES
-  rice::add meta:arch meta:macos
-  rice::add -m -c meta:suse
-```
-
-
-#### rice::run
-
-```man
-NAME
-  rice::run - run selected modules from the execution queue
-
-SYNOPSIS
-  rice::run [-A] [-M] [-i|-I|-x|-X MODULE]... [-o MODULE]... [-s SELECTOR]
-
-DESCRIPTION
-  Modules are executed in order in which they were added.
-
-  -A, --all
-    Run all explicit modules, matching pattern, in the run list.
-
-  -M, --no-meta
-    Do not execute meta-modules.
-
-  -i, --include MODULE
-    Run given module
-
-  -I, --include-tree MODULE (future)
-    Run given module, and it's children
-
-  -x, --exclude MODULE
-    Do not run given module
-
-  -X, --exclude-tree MODULE (future)
-    Do not run given module, and it's children
-
-  -o, --only MODULE (future)
-    Do not run any module except the one given.
-
-  -s, --select SELECTOR (default: $RICE_SELECTOR)
-    Run modules only matching the given selector.
-
-SELECTOR
-  SELECTOR := S-PATTERN | ''
-  S-PATTERN := S-ATOM | S-PATTERN:S-PATTERN
-  S-ATOM := [A-Za-z]+ | '_'
-
-  MODULE is matching if it's M-PATTERN matches SELECTOR's S-PATTERN,
-    or MODULE is an M-ATOM and SELECTOR equals ''.
-
-  M-PATTERN is matching if SELECTOR is an S-PATTERN,
-    and M-PATTERN ATOMS are a matching prefix of S-PATTERN ATOMS.
-
-  M-ATOM matches S-ATOM if they are equal or S-ATOM equals '_'.
-
-NOTES
-  Before running a module, `rice::transaction_begin` is executed,
-    which begins a new transaction.
-
-  After running a module, `rice::transaction_end` is executed,
-    which ends the current transaction.
-
-  If module failed and rollback is enabled, `rice::rollback_all` is executed after
-    the transaction ends.
-
-  A module fails iff the transaction failed,
-    or module's exit code was not 0.
-
-  A transaction fails iff a transaction step is not failable,
-    and it's exit code is not 0.
-```
-
-
-#### rice::exec
-
-```man
-NAME
-  rice::exec / rice::transaction_step - execute arbitrary command in a controlled environment
-
-SYNOPSIS
-  rice::exec [-f] [-q] [-d] [-c CODE...]... COMMAND
-
-DESCRIPTION
-  -f, --failable
-    Transaction doesn't fail if given this command fails.
-
-  -q, --quiet
-    Command output is not printed to stdout.
-
-  -d, --dummy
-    Prints command instead of executing it and returns 0.
-
-  -c, --code CODE...
-    Treates given exit CODES as success codes.
-
-NOTES
-  If transaction failed the passed command will not be executed.
-```
-
-
-#### rice::template
-
-```man
-NAME
-  rice::template - compile template files
-
-SYNOPSIS
-  rice::template [-f FUNCTION] [-l PATH] [-L] [-p|-P] [-S] [-m MODE] [-h HASH]... TEMPLATE OUTPUT
-
-DESCRIPTION
-  A TEMPLATE is compiled using HASHes and the OUTPUT is saved.
-  Optionally TEMPLATE can be symlinked into output's directory
-
-  -l, --symlink PATH (default: "$(dirname OUTPUT)/$(basename TEMPLATE)")
-    Symbolically link template file to PATH
-
-  -L, --no-symlink
-    Do not symbolically link template file to OUTPUT's parent directory.
-
-  -p, --make-dir (default)
-    Create "$(dirname OUTPUT)" if it doesn't exist.
-    
-  -P, --no-make-dir
-    Inverse of -p,--make-dir
-
-  -h, --hash HASH
-    Add HASH to the hash list.
-
-  -H, --no-global-hash
-    Do not use HASHES from the $RICE_TEMPLATE_HASHES list.
-
-  -m, --mode MODE
-    Set mode of the OUTPUT file to MODE.
-
-  -f, --function FUNCTION (default: $RICE_TEMPLATE_FUNCTION)
-    Use the following template function
-
-  -S, --sudo
-    Run as root.
-```
-
+The documentation is available on the [wiki](https://github.com/maxadamski/ricecooker/wiki).

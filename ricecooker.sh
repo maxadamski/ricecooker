@@ -499,41 +499,102 @@ rice::run_all() {
 	return 0
 }
 
-# usage: rice::run [-M|-a] [-p pattern] [modules...]
-# TODO: refactor this monster
+# NAME 
+#	rice::module_matches_selector MODULE SELECTOR
+#
+# ECHO
+#	true, if module matches
+#	false, otherwise
+#
+# ERROR
+#	1, if SELECTOR is invalid
+rice::module_matches_selector() {
+	local WORD="[A-Za-z0-9_-]"
+	local mod=$1
+	# TODO: validate sel
+	local sel=$2
+
+	# remove prefix operators
+	sel="${sel#[-+!^]}"
+	# replace single component wildcard
+	sel="${sel//@/$WORD+}"
+	# replace prefix wildcard
+	if [[ $sel =~ \.\..* ]]; then
+		sel="($WORD+:)*${sel#\.\.}"
+	fi
+	# replace suffix wildcard	
+	if [[ $sel =~ .*\.\. ]]; then
+		sel="${sel%..}(:$WORD+)*"
+	fi
+
+	[[ "$mod" =~ ^$sel$ ]] && echo true || echo false
+	return 0
+}
+
+# SYNOPSIS
+#	rice::is_wild_selector SELECTOR
+#
+# ECHOES
+#	true, if selector has wildcards
+#	false, otherwise
+rice::is_wild_selector() {
+	local sel=$1
+	[[ $sel =~ @ || $sel =~ ^\.\..*$ || $sel =~ ^.*\.\.$ ]] \
+		&& echo true || echo false
+	return 0
+}
+
+# SYNOPSIS
+#	rice::run [-A|-m|-x] [-p|-e|-w SELECTOR]... [SELECTOR]...
 rice::run() {
 	rice_run__last_statuses=()
 	rice_run__last_modules=()
 
-	local selected_modules=()
-	local excluded_modules=()
-	local pattern=$RICE_PATTERN
-	local run_all=false
-	local no_meta=false
-
-	# Parse arguments
+	local run_explicit=false
+	local run_helper=true
+	local selectors=()
+	local prepend=()
+	local append=()
 
 	while (( $# > 0 )); do
 		case "$1" in
-		-M|--no-meta)
-			no_meta=true
-			shift;;
 		-A|--all)
-			run_all=true
+			run_explicit=true
+			append+=(@)
 			shift;;
-		-i|--include)
-			selected_modules+=("$2")
+		-m|--manual)
+			run_explicit=false
+			run_helper=false
+			prepend=()
+			append=()
+			shift;;
+		-x|--explicit)
+			run_explicit=true
+			shift;;
+		-p|--prepend)
+			prepend=("$2")
 			shift 2;;
-		-x|--exclude)
-			excluded_modules+=("$2")
+		-a|--append)
+			append=("$2")
 			shift 2;;
-		-s|--select)
-			pattern="$2"
+		-w|--walk)
+			# tree walk selector
+			rice::split ":" "$2"
+			local path=("${rice_split__output[@]}")
+			for (( size=${#path[@]} ; size > 0 ; size-- )); do
+				local prefix="${path[*]::size}"
+				selectors+=("${prefix// /:}")
+			done
 			shift 2;;
 		*)
+			# regular selector
+			selectors+=("$1")
 			shift;;
 		esac
 	done
+
+	selectors=("${prepend[@]}" "${selectors[@]}")
+	selectors=("${selectors[@]}" "${append[@]}")
 
 	# Filter & run
 
@@ -545,77 +606,39 @@ rice::run() {
 		_current_module_dummy=${rice_module_dummy[$module_i]}
 		_current_module_rollback=${rice_module_rollback[$module_i]}
 
-		rice::split ':' "$module"
-		local module_name="${rice_split__output[0]}"
-		local module_pattern=("${rice_split__output[@]:1}")
-		rice::split ':' "$pattern"
-		local wanted_pattern=("${rice_split__output[@]}")
+		local matched_wild=false
+		local matched=false
 
-		# set flags to default values
-		local is_matching=false
-		local is_selected=false
-		local is_excluded=false
-
-		if (( ${#module_pattern[@]} <= ${#wanted_pattern[@]} )); then
-			# only check if pattern matches if module is not top-level
-			# check if module_pattern is a prefix of wanted_pattern
-			is_matching=true
-			for (( i=0 ; i < ${#module_pattern[@]} ; i++ )); do
-				if [[ "${module_pattern[i]}" != "${wanted_pattern[i]}" ]]; then
-					is_matching=false
-					break
-				fi
-			done
-		fi
-
-		for selected_module in "${selected_modules[@]}"; do
-			if [[ ( $is_matching == true && $module_name == $selected_module ) \
-					|| $module == $selected_module ]]; then
-				is_selected=true
-				break
+		for sel in "${selectors[@]}"; do
+			local _match=$(rice::module_matches_selector "$module" "$sel")
+			local _wild=$(rice::is_wild_selector "$sel")
+			if   [[ $_match == false && "$sel" =~ \!.* ]]; then
+				matched=false; break
+			elif [[ $_match == true  && "$sel" =~ \-.* ]]; then
+				matched=false; break
+			elif [[ $_match == false && "$sel" =~ \^.* ]]; then
+				[[ $_wild == true ]] && matched_wild=true
+				matched=true; break
+			elif [[ $_match == true ]]; then
+				[[ $_wild == true ]] && matched_wild=true
+				matched=true; break
 			fi
 		done
 
-		for excluded_module in "${excluded_modules[@]}"; do
-			if [[ ( $is_matching == true && $module_name == $excluded_module ) \
-					|| $module ==  $excluded_module ]]; then
-				is_excluded=true
-				break
-			fi
-		done
-
-		if [[ $is_excluded == true ]]; then
-			rice::debug "skipping excluded module: $module"
+		if [[ $matched == false ]]; then
+			rice::debug "skipping module '$module'"
 			continue
 		fi
 
-		if [[ $is_matching == true && $no_meta == false \
-				&& $_current_module_meta == true ]]; then
-			is_selected=true
-		fi
-
-		if [[ $is_matching == false ]]; then
-			rice::debug "skipping non-matching module: $module"
+		if [[ $_current_module_explicit == true && $run_explicit == false \
+				&& $matched_wild == true ]]; then
+			rice::debug "skipping explicit module '$module'"
 			continue
 		fi
 
-		if [[ $is_selected == false ]]; then
-			if (( ${#selected_modules[@]} > 0 )); then
-				rice::debug "skipping not selected module: $module"
-				continue
-			fi
-
-			if [[ $_current_module_explicit == true \
-					&& $run_all == false ]]; then
-				rice::debug "skipping explicit module module: $module"
-				continue
-			fi
-
-			if [[ $_current_module_meta == true \
-					&& $no_meta == true ]]; then
-				rice::debug "skipping explicit meta module: $module"
-				continue
-			fi
+		if [[ $_current_module_meta == true && $run_helper == false ]]; then
+			rice::debug "skipping helper module '$module'"
+			continue
 		fi
 
 		# we can finally run the module
@@ -624,7 +647,7 @@ rice::run() {
 		rice_run__last_status=$?
 
 		# log our progress
-		rice_run__last_statuses+=($rice_run__last_status)
+		rice_run__last_statuses+=("$rice_run__last_status")
 		rice_run__last_modules+=("$module")
 
 		if [[ $_current_module_critical == true \
