@@ -1,13 +1,15 @@
 # Rice Cooker 🍚
 
-Rice Cooker is a bash configuration management framework. It allows you to abstract out the control flow of arbitrary blocks of code (here called modules), with a hierarchical approach. This makes multi-system configurations easier to manage and modify. 
+Rice Cooker is a bash configuration management framework. It allows you to abstract out the control flow of arbitrary blocks of code (modules), with a hierarchical approach, making multi-system configurations easy to manage and modify. 
 
-Reapplying the configuration is faster. For example, if you only change fonts or colors, there is no need to copy other system configuration - you only run modules related to the look and feel. Being just a bash script, Rice Cooker can be sourced in your shell (assuming bash or zsh) for rapid configuration development.
+
+## Motivation
+
+Reapplying configuration should be fast. For example, if you only change fonts or colors, there is no need to copy other system configuration - you only run modules related to the look and feel. Being just a bash script, Rice Cooker can be sourced in your shell (assuming bash or zsh) for rapid configuration development.
 
 The philosophy of Rice Cooker is to give the user full control over their scripts. Only module names are "convention over configuration", everything else is done explicitly, although without needless verbosity. By passing your commands to `rice::exec` (or a shorter alias of choice) control over code execution in modules is given, and features like transactions and extensive logging are made possible. 
 
 All features are opt-in, so only ones you find useful may be picked. Common operations like templating are also provided to automate the boring stuff, with more planned for the future.
-
 
 
 ## Features
