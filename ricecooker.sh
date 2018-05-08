@@ -5,9 +5,6 @@ rice_ansi_red=$(tput setaf 1)
 rice_ansi_green=$(tput setaf 2)
 rice_ansi_yellow=$(tput setaf 3)
 
-rice_verbosity=1
-rice_error=0
-
 rice_module_list=()
 rice_module_explicit=()
 rice_module_meta=()
@@ -22,8 +19,10 @@ rice_transaction_in_progress=false
 rice_transaction_failed=false
 rice_transaction_steps=()
 
-export RICE_TEMPLATE_FUNCTION="rice::template_mustache"
-export RICE_TEMPLATE_HASHES=()
+RICE_TEMPLATE_FUNCTION="rice::template_mustache"
+RICE_TEMPLATE_HASHES=()
+RICE_VERBOSITY=1
+RICE_EXIT_CODE=0
 
 
 ###############################################################################
@@ -33,7 +32,7 @@ export RICE_TEMPLATE_HASHES=()
 rice::echo() {
 	local echo_level=$1
 	local message="${*:2}"
-	if (( rice_verbosity >= echo_level )); then
+	if (( RICE_VERBOSITY >= echo_level )); then
 		echo "$message" >&2
 	fi
 }
@@ -60,7 +59,7 @@ rice::error() {
 
 rice::fatal() {
 	rice::echo 1 "${rice_ansi_red}rice: [fatal]${rice_ansi_none} $*"
-	exit $rice_error
+	exit $RICE_EXIT_CODE
 }
 
 rice::ask() {
@@ -320,7 +319,7 @@ rice::transaction_step() {
 
 
 	rice_transaction_steps+=("$*")
-	if (( rice_verbosity >= 2 )); then
+	if (( RICE_VERBOSITY >= 2 )); then
 		echo "$rice_ansi_green"rice: "$rice_ansi_none""$*"
 	fi
 
@@ -329,7 +328,7 @@ rice::transaction_step() {
 		return 0	
 	fi
 
-	if [[ $rice_verbosity -ge 0 && $quiet == false ]]; then
+	if [[ $RICE_VERBOSITY -ge 0 && $quiet == false ]]; then
 		"$@" >&2
 	else
 		"$@" &> /dev/null
@@ -666,31 +665,21 @@ rice::run() {
 ###############################################################################
 
 rice::template_mustache() {
+	local templates=()
 	local hashes=()
-	local sudo=''
-	local src=''
-	local dst=''
 
 	while (( $# > 0 )); do
 		case $1 in
-		--hash)
+		-t|--template)
+			templates+=("$(realpath "$2")")
+			shift 2;;
+		-h|--hash)
 			hashes+=("$(realpath "$2")")
 			shift 2;;
-		--src)
-			src=$(realpath "$2")
-			shift 2;;
-		--dst)
-			dst=$(realpath "$2")
-			shift 2;;
-		--sudo)
-			sudo=sudo
-			shift;;
 		esac
 	done
 
-	rice::debug "cat ${hashes[@]} | mustache - '$src' | $sudo tee '$dst' > /dev/null"
-
-	cat ${hashes[@]} | mustache - "$src" | $sudo tee "$dst" > /dev/null
+	mustache <(cat "${hashes[@]}") "${templates[0]}"
 }
 
 rice::template() {
@@ -740,41 +729,29 @@ rice::template() {
 		esac
 	done
 
-	if [[ $global_use == true ]]; then
-		hashes+=("${RICE_TEMPLATE_HASHES[@]}")
-	fi
 
 	src="$(realpath "$1")"
 	dst="$2"
+
+	if [[ $global_use == true ]]; then
+		hashes+=("${RICE_TEMPLATE_HASHES[@]}")
+	fi
 
 	if [[ $makedirs == true ]]; then
 		$sudo mkdir -p "$(dirname "$dst")"
 	fi
 
-	local src_file=$(basename "$src")
-	local dst_file=$(basename "$dst")
-	local src_dir=$(dirname "$src")
-	local dst_dir=$(dirname "$dst")
-
-	local template_opts=(--src "$src" --dst "$dst")
-	if [[ $sudo == sudo ]]; then
-		template_opts+=('--sudo')
+	if [[ $link == true ]]; then
+		test -z "$link_path" && link_path="$(dirname "$dst")/$(basename "$src")"
+		test -f "$link_path" || $sudo ln -sf "$src" "$link_path"
 	fi
+
+	local template_opts=(--template "$src")
 	for hash in "${hashes[@]}"; do
 		template_opts+=(--hash "$hash")
 	done
 
-	rice::debug "$rice_template_function ${template_opts[@]}"
-
-	$function "${template_opts[@]}"
-
-	if [[ $link == true && $link_path == '' ]]; then
-		link_path="$dst_dir/$src_file"
-	fi
-
-	if [[ $link == true && ! -f "$link_path"  ]]; then
-		$sudo ln -sf "$src" "$link_path"
-	fi
+	$function "${template_opts[@]}" | $sudo tee "$dst" > /dev/null
 
 	if [[ $mode != '' ]]; then
 		$sudo chmod "$mode" "$dst"
