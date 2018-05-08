@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-rice::add -m meta:system_a
-meta:system_a() {
+rice::add -h helper:system_a
+helper:system_a() {
 	rice::exec true
 }
 

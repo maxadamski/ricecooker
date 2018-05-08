@@ -107,7 +107,7 @@ test__special_modules__runs__implicit() {
 
 	rice::run @:system_a
 
-	expected_ran=(meta:system_a implicit:system_a)
+	expected_ran=(helper:system_a implicit:system_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
 	assertModulesSucceded
 }
@@ -127,7 +127,7 @@ test__special_modules__runs__all() {
 
 	rice::run -A @:system_a
 
-	expected_ran=(meta:system_a explicit:system_a implicit:system_a)
+	expected_ran=(helper:system_a explicit:system_a implicit:system_a)
 	assertEquals "${expected_ran[*]}" "${rice_run__last_modules[*]}"
 	assertModulesSucceded
 }
