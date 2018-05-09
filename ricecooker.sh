@@ -611,14 +611,18 @@ rice::run() {
 		for sel in "${selectors[@]}"; do
 			local _match=$(rice::module_matches_selector "$module" "$sel")
 			local _wild=$(rice::is_wild_selector "$sel")
-			if   [[ $_match == false && "$sel" =~ \!.* ]]; then
+			if [[ "$sel" =~ \!.* ]]; then
+				[[ $_match == true ]] && continue
 				matched=false; break
-			elif [[ $_match == true  && "$sel" =~ \-.* ]]; then
+			elif [[ "$sel" =~ \-.* ]]; then
+				[[ $_match == false ]] && continue
 				matched=false; break
-			elif [[ $_match == false && "$sel" =~ \^.* ]]; then
+			elif [[ "$sel" =~ \^.* ]]; then
+				[[ $_match == true ]] && continue
 				[[ $_wild == true ]] && matched_wild=true
 				matched=true; break
-			elif [[ $_match == true ]]; then
+			else
+				[[ $_match == false ]] && continue
 				[[ $_wild == true ]] && matched_wild=true
 				matched=true; break
 			fi
