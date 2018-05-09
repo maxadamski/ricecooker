@@ -94,7 +94,7 @@ Save yourself precious keystrokes by defining a function like this in the ricefi
 ```sh
 rebuild() {
   # assuming you have these modules added
-  rice::run ${RICE_RUN_PREFIX} system_packages.. system_config.. user_config.. $@
+  rice::run -w "(system_packages|system_config|user_config)$RICE_TREE_SUFFIX" "$@"
 }
 ```
 
@@ -102,11 +102,11 @@ You can alse export the selector for your setup in the shell (hint: use template
 
 ```sh
 alias rice=~/.dotfiles/ricefile
-export RICE_RUN_PREFIX='-w !@:arch:work'
+export RICE_TREE_SUFFIX=':arch:work'
 # more flexible:
-#{{#rice_selector}}
-#   export RICE_RUN_PREFIX={{rice_run_args}}
-#{{/rice_selector}}
+#{{#rice_tree_suffix}}
+#export RICE_TREE_SUFFIX='{{rice_tree_suffix}}'
+#{{/rice_tree_suffix}}
 ```
 
 Now you can run common actions effortlessly!
